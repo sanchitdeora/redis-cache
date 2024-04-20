@@ -7,6 +7,9 @@ import (
 )
 
 func main() {
+	// initializer
+	handler := NewCommandsHandler()
+
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
 		fmt.Println("Failed to bind to port :6379")
@@ -22,11 +25,11 @@ func main() {
 			os.Exit(1)
 		}
 
-		go handleConn(conn)
+		go handleConn(conn, handler)
 	}
 }
 
-func handleConn(conn net.Conn) {
+func handleConn(conn net.Conn, handler *CommandsHandler) {
 	defer conn.Close()
 	
 	buf := make([]byte, 128)
@@ -45,7 +48,7 @@ func handleConn(conn net.Conn) {
 		fmt.Printf("Message Received: %s", buf[:n])
 	
 
-		response, err := ParseCommands(buf, n)
+		response, err := handler.ParseCommands(buf, n)
 		if err != nil {
 			fmt.Println("error parsing commands: ", err.Error())
 			return
