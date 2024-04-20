@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 )
 
 func main() {
@@ -19,7 +18,7 @@ func main() {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection: ", err.Error())
+			fmt.Println("error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
 
@@ -35,7 +34,7 @@ func handleConn(conn net.Conn) {
 
 		n, err := conn.Read(buf)
 		if err != nil {
-			fmt.Println("Error reading from connection: ", err.Error())
+			fmt.Println("error reading from connection: ", err.Error())
 			return
 		}
 		if n == 0 {
@@ -46,34 +45,15 @@ func handleConn(conn net.Conn) {
 		fmt.Printf("Message Received: %s", buf[:n])
 	
 
-		// parsing redis-like input protocols
-
-		requestLines := strings.Split(string(buf[:n]), CLRF)
-		if len(requestLines) < 3 {
-			fmt.Println("invalid command received:", requestLines)
+		response, err := ParseCommands(buf, n)
+		if err != nil {
+			fmt.Println("error parsing commands: ", err.Error())
 			return
-		}
-		
-		command := Commands(strings.ToUpper(requestLines[2]))
-
-		var response string
-		switch command {
-			case PING:
-				response = "+PONG\r\n"
-			case ECHO:
-				if len(requestLines) < 5 {
-					fmt.Println("invalid command received for ECHO:", requestLines)
-					return
-				}
-				response = BuildResponse(requestLines[4])
-			default:
-				response = "-ERR unknown command\r\n"
-				fmt.Println("invalid command received:", command)
 		}
 
 		_, err = conn.Write([]byte(response))
 		if err != nil {
-			fmt.Println("Error writing to connection: ", err.Error())
+			fmt.Println("error writing to connection: ", err.Error())
 			return
 		}
 	}
