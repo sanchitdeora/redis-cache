@@ -22,7 +22,7 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-	
+
 		go handleConn(conn)
 	}
 }
@@ -45,9 +45,33 @@ func handleConn(conn net.Conn) {
 	
 		fmt.Printf("Message Received: %s", buf[:n])
 	
-		if strings.Contains(string(buf[:n]), "ping") {
-			_, err = conn.Write([]byte("+PONG\r\n"))
+
+		// parsing redis-like input protocols
+
+		requestLines := strings.Split(string(buf[:n]), CLRF)
+		if len(requestLines) < 3 {
+			fmt.Println("invalid command received:", requestLines)
+			return
 		}
+		
+		command := Commands(strings.ToUpper(requestLines[2]))
+
+		var response string
+		switch command {
+			case PING:
+				response = "+PONG\r\n"
+			case ECHO:
+				if len(requestLines) < 5 {
+					fmt.Println("invalid command received for ECHO:", requestLines)
+					return
+				}
+				response = BuildResponse(requestLines[4])
+			default:
+				response = "-ERR unknown command\r\n"
+				fmt.Println("invalid command received:", command)
+		}
+
+		_, err = conn.Write([]byte(response))
 		if err != nil {
 			fmt.Println("Error writing to connection: ", err.Error())
 			return
