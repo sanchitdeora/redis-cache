@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -30,16 +31,26 @@ func handleConn(conn net.Conn) {
 	defer conn.Close()
 	
 	buf := make([]byte, 128)
-	
-	_, err := conn.Read(buf)
-	if err != nil {
-		fmt.Println("Error reading from connection: ", err.Error())
-		os.Exit(1)
-	}
+	for {
 
-	_, err = conn.Write([]byte("+PONG\r\n"))
-	if err != nil {
-		fmt.Println("Error writing to connection: ", err.Error())
-		os.Exit(1)
+		n, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("Error reading from connection: ", err.Error())
+			return
+		}
+		if n == 0 {
+			fmt.Println("buffer is empty")
+			return
+		}
+	
+		fmt.Printf("Message Received: %s", buf[:n])
+	
+		if strings.Contains(string(buf[:n]), "ping") {
+			_, err = conn.Write([]byte("+PONG\r\n"))
+		}
+		if err != nil {
+			fmt.Println("Error writing to connection: ", err.Error())
+			return
+		}
 	}
 }
