@@ -16,6 +16,7 @@ const (
 	GET Commands = "GET"
 	SET Commands = "SET"
 	PX Commands = "PX"
+	INFO Commands = "INFO"
 )
 
 type CommandsHandler struct {
@@ -51,8 +52,10 @@ func (ch *CommandsHandler) ParseCommands(buffer []byte, readLen int) (string, er
 		case GET:
 			return ch.GetHandler(requestLines)
 
+		case INFO:
+			return ch.InfoHandler(requestLines)
 		default:
-			return "", fmt.Errorf("invalid command received: %s", command)
+			return "$-1/r/n", fmt.Errorf("invalid command received: %s", command)
 	}
 }
 
@@ -107,6 +110,10 @@ func (ch *CommandsHandler) GetHandler(requestLines []string) (string, error) {
 	}
 	
 	return buildResponse(val), nil
+}
+
+func (ch *CommandsHandler) InfoHandler(requestLines []string) (string, error) {
+	return buildResponse("role:master"), nil
 }
 
 func buildResponse(message string) string {
