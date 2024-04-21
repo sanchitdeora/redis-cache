@@ -1,35 +1,77 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"os"
 )
 
-func main() {
-	// initializer
-	handler := NewCommandsHandler()
+const (
+	PORT_FLAG = "port"
+	DEFAULT_LISTENER_PORT = "6379"
+	PORT_FLAG_USAGE = "port to listen on"
 
-	l, err := net.Listen("tcp", "0.0.0.0:6379")
+	TCP_NETWORK = "tcp"
+)
+
+type Config struct {
+	ListnerPort string
+}
+
+type Server struct {
+	Config
+	listner net.Listener
+	handler CommandsHandler
+}
+
+// NewServer() Creates a new Server
+func NewServer(cfg Config) Server {
+	if cfg.ListnerPort == "" {
+		cfg.ListnerPort = DEFAULT_LISTENER_PORT
+	}
+	return Server{Config: cfg, handler: NewCommandsHandler()}
+}
+
+func main() {
+	portPtr := flag.String(PORT_FLAG, DEFAULT_LISTENER_PORT, PORT_FLAG_USAGE)
+	flag.Parse()
+
+	port := fmt.Sprintf(":%s", *portPtr)
+	cfg := Config{
+		ListnerPort: port,
+	}
+	server := NewServer(cfg)
+
+	server.StartServer()
+}
+
+func (s *Server) StartServer() {
+	l, err := net.Listen(TCP_NETWORK, s.ListnerPort)
 	if err != nil {
-		fmt.Println("Failed to bind to port :6379")
+		fmt.Println("Failed to bind to port", s.ListnerPort)
 		os.Exit(1)
 	}
 
 	defer l.Close()
 
+	s.listner = l
+	s.Run()
+}
+
+func (s *Server) Run() {
 	for {
-		conn, err := l.Accept()
+		conn, err := s.listner.Accept()
 		if err != nil {
 			fmt.Println("error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
 
-		go handleConn(conn, handler)
+		go handleConn(conn, s.handler)
 	}
 }
 
-func handleConn(conn net.Conn, handler *CommandsHandler) {
+func handleConn(conn net.Conn, handler CommandsHandler) {
 	defer conn.Close()
 	
 	buf := make([]byte, 128)

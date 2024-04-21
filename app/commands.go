@@ -22,8 +22,8 @@ type CommandsHandler struct {
 	Store Store
 }
 
-func NewCommandsHandler() *CommandsHandler{
-	return &CommandsHandler{
+func NewCommandsHandler() CommandsHandler{
+	return CommandsHandler{
 		Store: NewStore(),
 	}
 }

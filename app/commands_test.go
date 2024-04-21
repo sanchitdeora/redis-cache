@@ -7,11 +7,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createCommandsHandler() *CommandsHandler{
-	return NewCommandsHandler()
 
+
+func createCommandsHandler() CommandsHandler{
+	return NewCommandsHandler()
 }
 
+// TestParseCommands
 func TestParseCommands_Ping(t *testing.T) {
 	handler := createCommandsHandler()
 
