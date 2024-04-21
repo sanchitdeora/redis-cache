@@ -19,12 +19,18 @@ const (
 	INFO Commands = "INFO"
 )
 
+type CommandOpts struct {
+	ServerRole Role
+}
+
 type CommandsHandler struct {
+	CommandOpts
 	Store Store
 }
 
-func NewCommandsHandler() CommandsHandler{
+func NewCommandsHandler(opts CommandOpts) CommandsHandler{
 	return CommandsHandler{
+		CommandOpts: opts,
 		Store: NewStore(),
 	}
 }
@@ -113,7 +119,7 @@ func (ch *CommandsHandler) GetHandler(requestLines []string) (string, error) {
 }
 
 func (ch *CommandsHandler) InfoHandler(requestLines []string) (string, error) {
-	return buildResponse("role:master"), nil
+	return buildResponse(fmt.Sprintf("role:%s", ch.ServerRole)), nil
 }
 
 func buildResponse(message string) string {

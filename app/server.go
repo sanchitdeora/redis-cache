@@ -7,12 +7,23 @@ import (
 	"os"
 )
 
+type Role string
+
 const (
-	PORT_FLAG = "port"
 	DEFAULT_LISTENER_PORT = "6379"
-	PORT_FLAG_USAGE = "port to listen on"
+	
+	// flag constants
+	FLAG_PORT = "port"
+	FLAG_PORT_USAGE = "port to listen on"
+	
+	FLAG_REPLICA_OF = "replicaof"
+	FLAG_REPLICA_OF_USAGE = "server role"
 
 	TCP_NETWORK = "tcp"
+
+	// role constants
+	ROLE_MASTER Role = "master"
+	ROLE_SLAVE Role = "slave"
 )
 
 type Config struct {
@@ -21,27 +32,44 @@ type Config struct {
 
 type Server struct {
 	Config
+	Role Role
 	listner net.Listener
 	handler CommandsHandler
 }
 
 // NewServer() Creates a new Server
-func NewServer(cfg Config) Server {
+func NewServer(cfg Config, role Role) Server {
 	if cfg.ListnerPort == "" {
 		cfg.ListnerPort = DEFAULT_LISTENER_PORT
 	}
-	return Server{Config: cfg, handler: NewCommandsHandler()}
+
+	return Server{
+		Config: cfg,
+		Role: role,
+		handler: NewCommandsHandler(
+			CommandOpts{
+				ServerRole: role,
+			},
+		),
+	}
 }
 
 func main() {
-	portPtr := flag.String(PORT_FLAG, DEFAULT_LISTENER_PORT, PORT_FLAG_USAGE)
+	portPtr := flag.String(FLAG_PORT, DEFAULT_LISTENER_PORT, FLAG_PORT_USAGE)
+	rolePtr := flag.String(FLAG_REPLICA_OF, "", FLAG_REPLICA_OF_USAGE)
 	flag.Parse()
 
 	port := fmt.Sprintf(":%s", *portPtr)
+
+	serverRole := ROLE_MASTER
+	if len(*rolePtr) > 0 {
+		serverRole = ROLE_SLAVE
+	}
+
 	cfg := Config{
 		ListnerPort: port,
 	}
-	server := NewServer(cfg)
+	server := NewServer(cfg, Role(serverRole))
 
 	server.StartServer()
 }

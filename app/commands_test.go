@@ -7,15 +7,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// var portPtr *string = flag.String(FLAG_PORT, DEFAULT_LISTENER_PORT, FLAG_PORT_USAGE)
 
 
-func createCommandsHandler() CommandsHandler{
-	return NewCommandsHandler()
+func createCommandsHandler(role Role) CommandsHandler{
+	return NewCommandsHandler(
+		CommandOpts{ServerRole: role},
+	)
 }
 
 // TestParseCommands
 func TestParseCommands_Ping(t *testing.T) {
-	handler := createCommandsHandler()
+	handler := createCommandsHandler(ROLE_MASTER)
 
 	buff := []byte("*1\r\n$4\r\nping\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
@@ -24,7 +27,7 @@ func TestParseCommands_Ping(t *testing.T) {
 }
 
 func TestParseCommands_Echo(t *testing.T) {
-	handler := createCommandsHandler()
+	handler := createCommandsHandler(ROLE_MASTER)
 
 	buff := []byte("*1\r\n$4\r\necho\r\n$11\r\nHello World\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
@@ -33,7 +36,7 @@ func TestParseCommands_Echo(t *testing.T) {
 }
 
 func TestParseCommands_Set(t *testing.T) {
-	handler := createCommandsHandler()
+	handler := createCommandsHandler(ROLE_MASTER)
 
 	buff := []byte("*1\r\n$3\r\nset\r\n$3\r\nfoo\r\n$3\r\bar\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
@@ -42,7 +45,7 @@ func TestParseCommands_Set(t *testing.T) {
 }
 
 func TestParseCommands_SetWithExpiration(t *testing.T) {
-	handler := createCommandsHandler()
+	handler := createCommandsHandler(ROLE_MASTER)
 
 	buff := []byte("*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
@@ -51,7 +54,7 @@ func TestParseCommands_SetWithExpiration(t *testing.T) {
 }
 
 func TestParseCommands_Get(t *testing.T) {
-	handler := createCommandsHandler()
+	handler := createCommandsHandler(ROLE_MASTER)
 
 	// set foo bar with 1sec expiration
 	buff := []byte("*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")	
