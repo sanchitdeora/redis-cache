@@ -9,10 +9,20 @@ import (
 
 // var portPtr *string = flag.String(FLAG_PORT, DEFAULT_LISTENER_PORT, FLAG_PORT_USAGE)
 
+const (
+	TEST_REPLICATION_ID = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+)
 
 func createCommandsHandler(role Role) CommandsHandler{
 	return NewCommandsHandler(
-		CommandOpts{ServerRole: role},
+		CommandOpts{
+			ServerInfo: ServerOpts{
+				ListnerPort: DEFAULT_LISTENER_PORT,
+				Role: role,
+				ReplicationID: TEST_REPLICATION_ID,
+				ReplicationOffset: 0,
+			},
+		},
 	)
 }
 
@@ -72,4 +82,13 @@ func TestParseCommands_Get(t *testing.T) {
 	val, err = handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
 	assert.Equal(t, "$-1\r\n", val)
+}
+
+func TestParseCommands_Info(t *testing.T) {
+	handler := createCommandsHandler(ROLE_MASTER)
+
+	buff := []byte("*2\r\n$4\r\nINFO\r\n$11\r\nreplication\r\n")	
+	val, err := handler.ParseCommands(buff, len(buff))
+	assert.Nil(t, err)
+	assert.Equal(t, "$87\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n", val)
 }

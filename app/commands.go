@@ -17,10 +17,15 @@ const (
 	SET Commands = "SET"
 	PX Commands = "PX"
 	INFO Commands = "INFO"
+
+	// info response constants
+	INFO_ROLE = "role"
+	INFO_MASTER_REPLICATION_ID = "master_replid"
+	INFO_MASTER_REPLICATION_OFFSET = "master_repl_offset"
 )
 
 type CommandOpts struct {
-	ServerRole Role
+	ServerInfo ServerOpts
 }
 
 type CommandsHandler struct {
@@ -119,9 +124,21 @@ func (ch *CommandsHandler) GetHandler(requestLines []string) (string, error) {
 }
 
 func (ch *CommandsHandler) InfoHandler(requestLines []string) (string, error) {
-	return buildResponse(fmt.Sprintf("role:%s", ch.ServerRole)), nil
+	fmt.Printf("--- debug ServerInfo---\nRole:%s\nReplicationID:%s\nOffset:%v\n", ch.ServerInfo.Role, ch.ServerInfo.ReplicationID, ch.ServerInfo.ReplicationOffset)
+	return buildResponse(
+		fmt.Sprintf("%s:%s", INFO_ROLE, ch.ServerInfo.Role), 
+		fmt.Sprintf("%s:%s", INFO_MASTER_REPLICATION_ID, ch.ServerInfo.ReplicationID), 
+		fmt.Sprintf("%s:%v", INFO_MASTER_REPLICATION_OFFSET, ch.ServerInfo.ReplicationOffset),
+	), nil
 }
 
-func buildResponse(message string) string {
-	return fmt.Sprintf("$%v\r\n%s\r\n", len(message), message)
+func buildResponse(messages ...string) string {
+	var resp string
+	if len(messages) > 1 {
+		resp = strings.Join(messages, "\n")
+	} else {
+		resp = strings.Join(messages, "")
+	}
+
+	return fmt.Sprintf("$%v\r\n%s\r\n", len(resp), resp)
 }

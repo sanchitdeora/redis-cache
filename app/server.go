@@ -19,36 +19,37 @@ const (
 	FLAG_REPLICA_OF = "replicaof"
 	FLAG_REPLICA_OF_USAGE = "server role"
 
+	// server constants
 	TCP_NETWORK = "tcp"
+	REPLICA_ID_LENGTH = 40
 
 	// role constants
 	ROLE_MASTER Role = "master"
 	ROLE_SLAVE Role = "slave"
+
+
 )
 
-type Config struct {
+type ServerOpts struct {
 	ListnerPort string
+	Role Role
+	ReplicationID string
+	ReplicationOffset int64
 }
 
 type Server struct {
-	Config
-	Role Role
+	ServerOpts
 	listner net.Listener
 	handler CommandsHandler
 }
 
 // NewServer() Creates a new Server
-func NewServer(cfg Config, role Role) Server {
-	if cfg.ListnerPort == "" {
-		cfg.ListnerPort = DEFAULT_LISTENER_PORT
-	}
-
+func NewServer(opts ServerOpts) Server {
 	return Server{
-		Config: cfg,
-		Role: role,
+		ServerOpts: opts,
 		handler: NewCommandsHandler(
 			CommandOpts{
-				ServerRole: role,
+				ServerInfo: opts,
 			},
 		),
 	}
@@ -66,10 +67,13 @@ func main() {
 		serverRole = ROLE_SLAVE
 	}
 
-	cfg := Config{
+	opts := ServerOpts{
 		ListnerPort: port,
+		Role: Role(serverRole),
+		ReplicationID: GenerateAlphaNumericString(REPLICA_ID_LENGTH),
+		ReplicationOffset: 0,
 	}
-	server := NewServer(cfg, Role(serverRole))
+	server := NewServer(opts)
 
 	server.StartServer()
 }
@@ -119,6 +123,7 @@ func handleConn(conn net.Conn, handler CommandsHandler) {
 	
 
 		response, err := handler.ParseCommands(buf, n)
+		fmt.Printf("--- debug Response ---\nResponse:%s\n", response)
 		if err != nil {
 			fmt.Println("error parsing commands: ", err.Error())
 			return
