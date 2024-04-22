@@ -58,8 +58,6 @@ func main() {
 	replicaOfPtr := flag.String(FLAG_REPLICA_OF, "", FLAG_REPLICA_OF_USAGE)
 	flag.Parse()
 
-	port := fmt.Sprintf(":%s", *portPtr)
-
 	var serverRole Role
 	var masterHost string
 	var masterPort string
@@ -75,7 +73,7 @@ func main() {
 	}
 
 	opts := ServerOpts{
-		ListnerPort: port,
+		ListnerPort: *portPtr,
 		Role: Role(serverRole),
 		ReplicationID: replicationId,
 		ReplicationOffset: 0,
@@ -83,13 +81,13 @@ func main() {
 	server := NewServer(opts)
 
 	if server.Role == ROLE_SLAVE {
-		handshakeMaster(fmt.Sprintf("%s:%s", masterHost, masterPort))
+		server.handshakeMaster(fmt.Sprintf("%s:%s", masterHost, masterPort))
 	}
 
 	server.StartServer()
 }
 
-func handshakeMaster(masterAddr string) {
+func (s *Server) handshakeMaster(masterAddr string) {
 	conn, err := net.Dial(TCP_NETWORK, masterAddr)
 	if err != nil {
 		fmt.Println("Failed to bind to port:", masterAddr, err)
@@ -105,10 +103,39 @@ func handshakeMaster(masterAddr string) {
 		fmt.Println("error writing to connection: ", err.Error())
 		return
 	}
+
+	_, err = conn.Read(make([]byte, 1024))
+	if err != nil {
+		return
+	}
+
+	// Send first REPLCONF to master with slave listening PORT
+	_, err = conn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$%v\r\n%s\r\n", len(s.ListnerPort), s.ListnerPort)))
+	if err != nil {
+		fmt.Println("error writing to connection: ", err.Error())
+		return
+	}
+
+	_, err = conn.Read(make([]byte, 1024))
+	if err != nil {
+		return
+	}
+
+	// Send second REPLCONF to master with PSYNC2 Capability
+	_, err = conn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"))
+	if err != nil {
+		fmt.Println("error writing to connection: ", err.Error())
+		return
+	}
+
+	_, err = conn.Read(make([]byte, 1024))
+	if err != nil {
+		return
+	}
 }
 
 func (s *Server) StartServer() {
-	l, err := net.Listen(TCP_NETWORK, s.ListnerPort)
+	l, err := net.Listen(TCP_NETWORK, fmt.Sprintf(":%s", s.ListnerPort))
 	if err != nil {
 		fmt.Println("Failed to bind to port", s.ListnerPort)
 		os.Exit(1)

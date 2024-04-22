@@ -17,6 +17,7 @@ const (
 	SET Commands = "SET"
 	PX Commands = "PX"
 	INFO Commands = "INFO"
+	REPLYCONF Commands = "REPLYCONF"
 
 	// info response constants
 	INFO_ROLE = "role"
@@ -65,6 +66,8 @@ func (ch *CommandsHandler) ParseCommands(buffer []byte, readLen int) (string, er
 
 		case INFO:
 			return ch.InfoHandler(requestLines)
+		case REPLYCONF:
+			return "", nil
 		default:
 			return "$-1/r/n", fmt.Errorf("invalid command received: %s", command)
 	}
