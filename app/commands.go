@@ -18,6 +18,8 @@ const (
 	PX Commands = "PX"
 	INFO Commands = "INFO"
 	REPLYCONF Commands = "REPLYCONF"
+	PSYNC Commands = "PSYNC"
+	FULLRESYNC Commands = "FULLRESYNC"
 
 	// info response constants
 	INFO_ROLE = "role"
@@ -67,7 +69,11 @@ func (ch *CommandsHandler) ParseCommands(buffer []byte, readLen int) (string, er
 		case INFO:
 			return ch.InfoHandler(requestLines)
 		case REPLYCONF:
-			return "", nil
+			return ch.ReplConfHandler()
+		case PSYNC:
+			return ch.PsyncHandler()
+		case FULLRESYNC:
+			return ch.FullResyncHandler()
 		default:
 			return "$-1/r/n", fmt.Errorf("invalid command received: %s", command)
 	}
@@ -127,12 +133,24 @@ func (ch *CommandsHandler) GetHandler(requestLines []string) (string, error) {
 }
 
 func (ch *CommandsHandler) InfoHandler(requestLines []string) (string, error) {
-	fmt.Printf("--- debug ServerInfo---\nRole:%s\nReplicationID:%s\nOffset:%v\n", ch.ServerInfo.Role, ch.ServerInfo.ReplicationID, ch.ServerInfo.ReplicationOffset)
+	fmt.Printf("--- debug ServerInfo---\nRole:%s\nReplicationID:%s\nOffset:%v\n", ch.ServerInfo.Role, ch.ServerInfo.MasterReplicationID, ch.ServerInfo.MasterReplicationOffset)
 	return buildResponse(
 		fmt.Sprintf("%s:%s", INFO_ROLE, ch.ServerInfo.Role), 
-		fmt.Sprintf("%s:%s", INFO_MASTER_REPLICATION_ID, ch.ServerInfo.ReplicationID), 
-		fmt.Sprintf("%s:%v", INFO_MASTER_REPLICATION_OFFSET, ch.ServerInfo.ReplicationOffset),
+		fmt.Sprintf("%s:%s", INFO_MASTER_REPLICATION_ID, ch.ServerInfo.MasterReplicationID), 
+		fmt.Sprintf("%s:%v", INFO_MASTER_REPLICATION_OFFSET, ch.ServerInfo.MasterReplicationOffset),
 	), nil
+}
+
+func (ch *CommandsHandler) ReplConfHandler() (string, error) {
+	return "+OK\r\n", nil
+}
+
+func (ch *CommandsHandler) PsyncHandler() (string, error) {
+	return fmt.Sprintf("+FULLRESYNC %s 0\r\n", ch.ServerInfo.MasterReplicationID), nil
+}
+
+func (ch *CommandsHandler) FullResyncHandler() (string, error) {
+	return "+OK\r\n", nil
 }
 
 func buildResponse(messages ...string) string {

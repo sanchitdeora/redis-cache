@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 )
 
 type Role string
@@ -31,8 +32,8 @@ const (
 type ServerOpts struct {
 	ListnerPort string
 	Role Role
-	ReplicationID string
-	ReplicationOffset int64
+	MasterReplicationID string
+	MasterReplicationOffset int64
 }
 
 type Server struct {
@@ -62,21 +63,24 @@ func main() {
 	var masterHost string
 	var masterPort string
 	var replicationId string
+	var offset int64
 	
 	if len(*replicaOfPtr) > 0 {
 		serverRole = ROLE_SLAVE
 		masterHost = *replicaOfPtr
 		masterPort = flag.Arg(0)
+		offset = -1
 	} else {
 		serverRole = ROLE_MASTER
 		replicationId = GenerateAlphaNumericString(REPLICA_ID_LENGTH)
+		offset = 0
 	}
 
 	opts := ServerOpts{
 		ListnerPort: *portPtr,
 		Role: Role(serverRole),
-		ReplicationID: replicationId,
-		ReplicationOffset: 0,
+		MasterReplicationID: replicationId,
+		MasterReplicationOffset: offset,
 	}
 	server := NewServer(opts)
 
@@ -115,14 +119,32 @@ func (s *Server) handshakeMaster(masterAddr string) {
 		fmt.Println("error writing to connection: ", err.Error())
 		return
 	}
-
+	
 	_, err = conn.Read(make([]byte, 1024))
 	if err != nil {
 		return
 	}
-
+	
 	// Send second REPLCONF to master with PSYNC2 Capability
 	_, err = conn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"))
+	if err != nil {
+		fmt.Println("error writing to connection: ", err.Error())
+		return
+	}
+	
+	_, err = conn.Read(make([]byte, 1024))
+	if err != nil {
+		return
+	}
+	
+	// Send first PSYNC to master with PSYNC2 Capability
+	sendReplicationID := s.MasterReplicationID
+	if len(s.MasterReplicationID) == 0 {
+		sendReplicationID = "?"
+	}
+	sendOffset := strconv.Itoa(int(s.MasterReplicationOffset))
+
+	_, err = conn.Write([]byte(fmt.Sprintf("*3\r\n$5\r\nPSYNC\r\n$%v\r\n%s\r\n$%v\r\n%s\r\n", len(sendReplicationID), sendReplicationID, len(sendOffset), sendOffset)))
 	if err != nil {
 		fmt.Println("error writing to connection: ", err.Error())
 		return

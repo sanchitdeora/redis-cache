@@ -20,8 +20,8 @@ func createCommandsHandler(role Role) CommandsHandler{
 			ServerInfo: ServerOpts{
 				ListnerPort: DEFAULT_LISTENER_PORT,
 				Role: role,
-				ReplicationID: TEST_REPLICATION_ID,
-				ReplicationOffset: 0,
+				MasterReplicationID: TEST_REPLICATION_ID,
+				MasterReplicationOffset: 0,
 			},
 		},
 	)
