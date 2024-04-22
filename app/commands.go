@@ -17,7 +17,7 @@ const (
 	SET Commands = "SET"
 	PX Commands = "PX"
 	INFO Commands = "INFO"
-	REPLYCONF Commands = "REPLYCONF"
+	REPLCONF Commands = "REPLCONF"
 	PSYNC Commands = "PSYNC"
 	FULLRESYNC Commands = "FULLRESYNC"
 
@@ -68,7 +68,7 @@ func (ch *CommandsHandler) ParseCommands(buffer []byte, readLen int) (string, er
 
 		case INFO:
 			return ch.InfoHandler(requestLines)
-		case REPLYCONF:
+		case REPLCONF:
 			return ch.ReplConfHandler()
 		case PSYNC:
 			return ch.PsyncHandler()
