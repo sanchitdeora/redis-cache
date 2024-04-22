@@ -26,8 +26,6 @@ const (
 	// role constants
 	ROLE_MASTER Role = "master"
 	ROLE_SLAVE Role = "slave"
-
-
 )
 
 type ServerOpts struct {
@@ -57,25 +55,56 @@ func NewServer(opts ServerOpts) Server {
 
 func main() {
 	portPtr := flag.String(FLAG_PORT, DEFAULT_LISTENER_PORT, FLAG_PORT_USAGE)
-	rolePtr := flag.String(FLAG_REPLICA_OF, "", FLAG_REPLICA_OF_USAGE)
+	replicaOfPtr := flag.String(FLAG_REPLICA_OF, "", FLAG_REPLICA_OF_USAGE)
 	flag.Parse()
 
 	port := fmt.Sprintf(":%s", *portPtr)
 
-	serverRole := ROLE_MASTER
-	if len(*rolePtr) > 0 {
+	var serverRole Role
+	var masterHost string
+	var masterPort string
+	var replicationId string
+	
+	if len(*replicaOfPtr) > 0 {
 		serverRole = ROLE_SLAVE
+		masterHost = *replicaOfPtr
+		masterPort = flag.Arg(0)
+	} else {
+		serverRole = ROLE_MASTER
+		replicationId = GenerateAlphaNumericString(REPLICA_ID_LENGTH)
 	}
 
 	opts := ServerOpts{
 		ListnerPort: port,
 		Role: Role(serverRole),
-		ReplicationID: GenerateAlphaNumericString(REPLICA_ID_LENGTH),
+		ReplicationID: replicationId,
 		ReplicationOffset: 0,
 	}
 	server := NewServer(opts)
 
+	if server.Role == ROLE_SLAVE {
+		handshakeMaster(fmt.Sprintf("%s:%s", masterHost, masterPort))
+	}
+
 	server.StartServer()
+}
+
+func handshakeMaster(masterAddr string) {
+	conn, err := net.Dial(TCP_NETWORK, masterAddr)
+	if err != nil {
+		fmt.Println("Failed to bind to port:", masterAddr, err)
+		return
+	}
+
+	defer conn.Close()
+
+	// start handshake
+	// Send PING to master
+	_, err = conn.Write([]byte("*1\r\n$4\r\nping\r\n"))
+	if err != nil {
+		fmt.Println("error writing to connection: ", err.Error())
+		return
+	}
 }
 
 func (s *Server) StartServer() {
