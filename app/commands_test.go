@@ -2,6 +2,7 @@ package main
 
 import (
 	// "flag"
+	"fmt"
 	"testing"
 	"time"
 
@@ -101,4 +102,13 @@ func TestParseCommands_ReplConf(t *testing.T) {
 	val, err := handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
 	assert.Equal(t, "+OK\r\n", val)
+}
+
+func TestParseCommands_PSync(t *testing.T) {
+	handler := createCommandsHandler(ROLE_MASTER)
+
+	buff := []byte("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")	
+	val, err := handler.ParseCommands(buff, len(buff))
+	assert.Nil(t, err)
+	assert.Equal(t, fmt.Sprintf("+FULLRESYNC %s 0\r\n", handler.ServerInfo.MasterReplicationID), val)
 }
