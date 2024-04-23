@@ -35,7 +35,7 @@ func TestParseCommands_Ping(t *testing.T) {
 	buff := []byte("*1\r\n$4\r\nping\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
-	assert.Equal(t, "+PONG\r\n", val)
+	assert.Equal(t, []string{"+PONG\r\n"}, val)
 }
 
 func TestParseCommands_Echo(t *testing.T) {
@@ -44,7 +44,7 @@ func TestParseCommands_Echo(t *testing.T) {
 	buff := []byte("*1\r\n$4\r\necho\r\n$11\r\nHello World\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
-	assert.Equal(t, "$11\r\nHello World\r\n", val)
+	assert.Equal(t, []string{"$11\r\nHello World\r\n"}, val)
 }
 
 func TestParseCommands_Set(t *testing.T) {
@@ -53,7 +53,7 @@ func TestParseCommands_Set(t *testing.T) {
 	buff := []byte("*1\r\n$3\r\nset\r\n$3\r\nfoo\r\n$3\r\bar\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
-	assert.Equal(t, "+OK\r\n", val)
+	assert.Equal(t, []string{"+OK\r\n"}, val)
 }
 
 func TestParseCommands_SetWithExpiration(t *testing.T) {
@@ -62,7 +62,7 @@ func TestParseCommands_SetWithExpiration(t *testing.T) {
 	buff := []byte("*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
-	assert.Equal(t, "+OK\r\n", val)
+	assert.Equal(t, []string{"+OK\r\n"}, val)
 }
 
 func TestParseCommands_Get(t *testing.T) {
@@ -76,14 +76,14 @@ func TestParseCommands_Get(t *testing.T) {
 	buff = []byte("*1\r\n$3\r\nget\r\n$5\r\nmango")	
 	val, err := handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
-	assert.Equal(t, "$9\r\nraspberry\r\n", val)
+	assert.Equal(t, []string{"$9\r\nraspberry\r\n"}, val)
 
 	time.Sleep(500 * time.Millisecond)
 
 	buff = []byte("*1\r\n$3\r\nget\r\n$5\r\nmango")	
 	val, err = handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
-	assert.Equal(t, "$-1\r\n", val)
+	assert.Equal(t, []string{"$-1\r\n"}, val)
 }
 
 func TestParseCommands_Info(t *testing.T) {
@@ -92,7 +92,7 @@ func TestParseCommands_Info(t *testing.T) {
 	buff := []byte("*2\r\n$4\r\nINFO\r\n$11\r\nreplication\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
-	assert.Equal(t, "$87\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n", val)
+	assert.Equal(t, []string{"$87\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n"}, val)
 }
 
 func TestParseCommands_ReplConf(t *testing.T) {
@@ -101,7 +101,7 @@ func TestParseCommands_ReplConf(t *testing.T) {
 	buff := []byte("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n6380\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
-	assert.Equal(t, "+OK\r\n", val)
+	assert.Equal(t, []string{"+OK\r\n"}, val)
 }
 
 func TestParseCommands_PSync(t *testing.T) {
@@ -110,5 +110,8 @@ func TestParseCommands_PSync(t *testing.T) {
 	buff := []byte("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")	
 	val, err := handler.ParseCommands(buff, len(buff))
 	assert.Nil(t, err)
-	assert.Equal(t, fmt.Sprintf("+FULLRESYNC %s 0\r\n", handler.ServerInfo.MasterReplicationID), val)
+	assert.Equal(t, []string{
+		fmt.Sprintf("+FULLRESYNC %s 0\r\n", handler.ServerInfo.MasterReplicationID),
+		"$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2",
+	}, val)
 }

@@ -183,10 +183,9 @@ func (s *Server) Run() {
 
 func handleConn(conn net.Conn, handler CommandsHandler) {
 	defer conn.Close()
-	
+
 	buf := make([]byte, 128)
 	for {
-
 		n, err := conn.Read(buf)
 		if err != nil {
 			fmt.Println("error reading from connection: ", err.Error())
@@ -196,21 +195,23 @@ func handleConn(conn net.Conn, handler CommandsHandler) {
 			fmt.Println("buffer is empty")
 			return
 		}
-	
+
 		fmt.Printf("Message Received: %s", buf[:n])
-	
 
-		response, err := handler.ParseCommands(buf, n)
-		fmt.Printf("--- debug Response ---\nResponse:%s\n", response)
-		if err != nil {
-			fmt.Println("error parsing commands: ", err.Error())
-			return
-		}
+		// responses
+		responses, err := handler.ParseCommands(buf, n)
+		for _, response := range responses {
+			fmt.Printf("--- debug Response ---\nResponse:%s\n", response)
+			if err != nil {
+				fmt.Println("error parsing commands: ", err.Error())
+				return
+			}
 
-		_, err = conn.Write([]byte(response))
-		if err != nil {
-			fmt.Println("error writing to connection: ", err.Error())
-			return
+			_, err = conn.Write([]byte(response))
+			if err != nil {
+				fmt.Println("error writing to connection: ", err.Error())
+				return
+			}
 		}
 	}
 }

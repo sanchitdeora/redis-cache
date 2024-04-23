@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"time"
 )
@@ -20,6 +21,9 @@ func NewStore() Store {
 	return Store{kvDataStore: make(KVDataStore)}
 }
 
+const (
+	EMPTY_RDB_FILE_BASE64 = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
+)
 
 func (s *Store) Set(key string, val string, expDur int64) error {
 	var expiration int64 = -1 
@@ -53,4 +57,8 @@ func (s *Store) Get(key string) (string, error) {
 	}
 
 	return val.Value, nil
+}
+
+func (s *Store) ToRDBStore() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(EMPTY_RDB_FILE_BASE64)
 }
