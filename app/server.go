@@ -222,7 +222,7 @@ func (s *Server) handleConn(conn net.Conn, handler CommandsHandler) {
 
 			for i, replica := range s.replicas {
 				fmt.Printf("Replica %v: LocalAddr: %s RemoteAddr: %s Other: %s\r\n", i, replica.LocalAddr(), replica.RemoteAddr(), replica)
-				fmt.Printf("Write to replica response: %s", buf)
+				fmt.Printf("Write to Replica %v response: %s", i, buf)
 
 				replica.Write(buf[:n])
 			}
