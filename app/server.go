@@ -11,22 +11,22 @@ import (
 type Role string
 
 const (
-	DEFAULT_LISTENER_PORT = "6379"
+	DefaultListenerPort = "6379"
 	
 	// flag constants
-	FLAG_PORT = "port"
-	FLAG_PORT_USAGE = "port to listen on"
+	FlagPort = "port"
+	FlagPortUsage = "port to listen on"
 	
-	FLAG_REPLICA_OF = "replicaof"
-	FLAG_REPLICA_OF_USAGE = "server role"
+	FlagReplicaOf = "replicaof"
+	FlagReplicaOfUsage = "server role"
 
 	// server constants
-	TCP_NETWORK = "tcp"
-	REPLICA_ID_LENGTH = 40
+	TcpNetwork = "tcp"
+	ReplicaIdLength = 40
 
 	// role constants
-	ROLE_MASTER Role = "master"
-	ROLE_SLAVE Role = "slave"
+	RoleMaster Role = "master"
+	RoleSlave Role = "slave"
 )
 
 type ServerOpts struct {
@@ -38,8 +38,9 @@ type ServerOpts struct {
 
 type Server struct {
 	ServerOpts
-	listner net.Listener
-	handler CommandsHandler
+	listner  net.Listener
+	handler  CommandsHandler
+	replicas []net.Conn
 }
 
 // NewServer() Creates a new Server
@@ -51,12 +52,13 @@ func NewServer(opts ServerOpts) Server {
 				ServerInfo: opts,
 			},
 		),
+		replicas: make([]net.Conn, 0),
 	}
 }
 
 func main() {
-	portPtr := flag.String(FLAG_PORT, DEFAULT_LISTENER_PORT, FLAG_PORT_USAGE)
-	replicaOfPtr := flag.String(FLAG_REPLICA_OF, "", FLAG_REPLICA_OF_USAGE)
+	portPtr := flag.String(FlagPort, DefaultListenerPort, FlagPortUsage)
+	replicaOfPtr := flag.String(FlagReplicaOf, "", FlagReplicaOfUsage)
 	flag.Parse()
 
 	var serverRole Role
@@ -66,13 +68,13 @@ func main() {
 	var offset int64
 	
 	if len(*replicaOfPtr) > 0 {
-		serverRole = ROLE_SLAVE
+		serverRole = RoleSlave
 		masterHost = *replicaOfPtr
 		masterPort = flag.Arg(0)
 		offset = -1
 	} else {
-		serverRole = ROLE_MASTER
-		replicationId = GenerateAlphaNumericString(REPLICA_ID_LENGTH)
+		serverRole = RoleMaster
+		replicationId = GenerateAlphaNumericString(ReplicaIdLength)
 		offset = 0
 	}
 
@@ -84,7 +86,7 @@ func main() {
 	}
 	server := NewServer(opts)
 
-	if server.Role == ROLE_SLAVE {
+	if server.Role == RoleSlave {
 		server.handshakeMaster(fmt.Sprintf("%s:%s", masterHost, masterPort))
 	}
 
@@ -92,7 +94,7 @@ func main() {
 }
 
 func (s *Server) handshakeMaster(masterAddr string) {
-	conn, err := net.Dial(TCP_NETWORK, masterAddr)
+	conn, err := net.Dial(TcpNetwork, masterAddr)
 	if err != nil {
 		fmt.Println("Failed to bind to port:", masterAddr, err)
 		return
@@ -119,24 +121,24 @@ func (s *Server) handshakeMaster(masterAddr string) {
 		fmt.Println("error writing to connection: ", err.Error())
 		return
 	}
-	
+
 	_, err = conn.Read(make([]byte, 1024))
 	if err != nil {
 		return
 	}
-	
+
 	// Send second REPLCONF to master with PSYNC2 Capability
 	_, err = conn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"))
 	if err != nil {
 		fmt.Println("error writing to connection: ", err.Error())
 		return
 	}
-	
+
 	_, err = conn.Read(make([]byte, 1024))
 	if err != nil {
 		return
 	}
-	
+
 	// Send first PSYNC to master with PSYNC2 Capability
 	sendReplicationID := s.MasterReplicationID
 	if len(s.MasterReplicationID) == 0 {
@@ -157,7 +159,7 @@ func (s *Server) handshakeMaster(masterAddr string) {
 }
 
 func (s *Server) StartServer() {
-	l, err := net.Listen(TCP_NETWORK, fmt.Sprintf(":%s", s.ListnerPort))
+	l, err := net.Listen(TcpNetwork, fmt.Sprintf(":%s", s.ListnerPort))
 	if err != nil {
 		fmt.Println("Failed to bind to port", s.ListnerPort)
 		os.Exit(1)
@@ -177,11 +179,11 @@ func (s *Server) Run() {
 			os.Exit(1)
 		}
 
-		go handleConn(conn, s.handler)
+		go s.handleConn(conn, s.handler)
 	}
 }
 
-func handleConn(conn net.Conn, handler CommandsHandler) {
+func (s *Server) handleConn(conn net.Conn, handler CommandsHandler) {
 	defer conn.Close()
 
 	buf := make([]byte, 128)
@@ -199,19 +201,45 @@ func handleConn(conn net.Conn, handler CommandsHandler) {
 		fmt.Printf("Message Received: %s", buf[:n])
 
 		// responses
-		responses, err := handler.ParseCommands(buf, n)
-		for _, response := range responses {
-			fmt.Printf("--- debug Response ---\nResponse:%s\n", response)
-			if err != nil {
-				fmt.Println("error parsing commands: ", err.Error())
-				return
-			}
+		req := string(buf[:n])
+		responses, err := handler.ParseCommands(req)
+		if err != nil {
+			fmt.Println("error parsing commands: ", err.Error())
+			return
+		}
 
-			_, err = conn.Write([]byte(response))
-			if err != nil {
-				fmt.Println("error writing to connection: ", err.Error())
-				return
+		// store replicas
+		if IsPsyncCommand(req) {
+			s.replicas = append(s.replicas, conn)
+		}
+
+		// write responses
+		s.writeMessages(conn, responses)
+
+		// send write commands request to replicas
+		if s.Role == RoleMaster && IsWriteCommand(req) {
+			fmt.Printf("Role: %s, Replicas List: %v\n", s.Role, len(s.replicas))
+
+			for i, replica := range s.replicas {
+				fmt.Printf("Replica %v: LocalAddr: %s RemoteAddr: %s Other: %s\r\n", i, replica.LocalAddr(), replica.RemoteAddr(), replica)
+				fmt.Printf("Write to replica response: %s", buf)
+
+				replica.Write(buf[:n])
 			}
 		}
 	}
+}
+
+func (s *Server) writeMessages(conn net.Conn, messages []string) error {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	for _, message := range messages {
+		_, err := conn.Write([]byte(message))
+		if err != nil {
+			return fmt.Errorf("error writing to connection: %s", err.Error())
+		}
+	}
+	return nil
 }

@@ -22,16 +22,16 @@ func NewStore() Store {
 }
 
 const (
-	EMPTY_RDB_FILE_BASE64 = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
+	RdbEmptyFileBase64 = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
 )
 
 func (s *Store) Set(key string, val string, expDur int64) error {
 	var expiration int64 = -1 
-	
+
 	if expDur > 0 {
 		expiration = time.Now().UnixMilli() + expDur
 	}
-	
+
 	fmt.Printf("Expiration time: %v  Value expiration duration: %v\n", expiration, expDur)
 
 	value := &ValueStore{
@@ -60,5 +60,5 @@ func (s *Store) Get(key string) (string, error) {
 }
 
 func (s *Store) ToRDBStore() ([]byte, error) {
-	return base64.StdEncoding.DecodeString(EMPTY_RDB_FILE_BASE64)
+	return base64.StdEncoding.DecodeString(RdbEmptyFileBase64)
 }

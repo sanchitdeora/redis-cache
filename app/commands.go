@@ -9,8 +9,6 @@ import (
 type Commands string
 
 const (
-	CLRF string = "\r\n"
-
 	PING Commands = "PING"
 	ECHO Commands = "ECHO"
 	GET Commands = "GET"
@@ -22,9 +20,9 @@ const (
 	FULLRESYNC Commands = "FULLRESYNC"
 
 	// info response constants
-	INFO_ROLE = "role"
-	INFO_MASTER_REPLICATION_ID = "master_replid"
-	INFO_MASTER_REPLICATION_OFFSET = "master_repl_offset"
+	InfoRole = "role"
+	InfoMasterReplicationID = "master_replid"
+	InfoMasterReplicationOffset = "master_repl_offset"
 )
 
 type CommandOpts struct {
@@ -43,12 +41,35 @@ func NewCommandsHandler(opts CommandOpts) CommandsHandler{
 	}
 }
 
+func IsWriteCommand(req string) bool {
+	requestLines, err := ParseRequest(req) 
+	if err != nil {
+		return false
+	}
+
+	if Commands(strings.ToUpper(requestLines[2])) == SET {
+		return true
+	}
+	return false
+}
+
+func IsPsyncCommand(req string) bool {
+	requestLines, err := ParseRequest(req) 
+	if err != nil {
+		return false
+	}
+
+	if Commands(strings.ToUpper(requestLines[2])) == PSYNC {
+		return true
+	}
+	return false
+}
 
 // parsing redis-like input protocols
-func (ch *CommandsHandler) ParseCommands(buffer []byte, readLen int) ([]string, error) {			
-	requestLines := strings.Split(string(buffer[:readLen]), CLRF)
-	if len(requestLines) < 3 {
-		return nil, fmt.Errorf("invalid command received: %s", requestLines)
+func (ch *CommandsHandler) ParseCommands(req string) ([]string, error) {			
+	requestLines, err := ParseRequest(req) 
+	if err != nil {
+		return nil, err
 	}
 
 	command := Commands(strings.ToUpper(requestLines[2]))
@@ -79,13 +100,17 @@ func (ch *CommandsHandler) ParseCommands(buffer []byte, readLen int) ([]string, 
 			return ch.FullResyncHandler()
 
 		default:
-			return []string{"$-1/r/n"}, fmt.Errorf("invalid command received: %s", command)
+			return NullResponse(), fmt.Errorf("invalid command received: %s", command)
 	}
 }
 
 // Command Handlers
 func (ch *CommandsHandler) PingHandler() ([]string, error) {
-	return []string{"+PONG\r\n"}, nil
+	resp, err := ResponseBuilder(SimpleStringsRespType, "PONG")
+	if err != nil {
+		return nil, fmt.Errorf("error creating response: %s", err.Error())
+	}
+	return []string{resp}, nil
 }
 
 func (ch *CommandsHandler) EchoHandler(requestLines []string) ([]string, error) {
@@ -93,7 +118,11 @@ func (ch *CommandsHandler) EchoHandler(requestLines []string) ([]string, error) 
 		return nil, fmt.Errorf("invalid command received. ECHO should have one arguments: %s", requestLines)
 	}
 
-	return []string{buildResponse(requestLines[4])}, nil
+	resp, err := ResponseBuilder(BulkStringsRespType, requestLines[4])
+	if err != nil {
+		return nil, fmt.Errorf("error creating response: %s", err.Error())
+	}
+	return []string{resp}, nil
 }
 
 func (ch *CommandsHandler) SetHandler(requestLines []string) ([]string, error) {
@@ -102,7 +131,7 @@ func (ch *CommandsHandler) SetHandler(requestLines []string) ([]string, error) {
 	}
 
 	var expiration int64 = -1
-	if len(requestLines) > 11 {
+	if len(requestLines) >= 11 {
 		command := Commands(strings.ToUpper(requestLines[8]))
 		if command == PX {
 			convertedExpiration, err := strconv.ParseInt(requestLines[10], 10, 64)
@@ -117,7 +146,11 @@ func (ch *CommandsHandler) SetHandler(requestLines []string) ([]string, error) {
 		return nil, fmt.Errorf("error while setting in store: %s", err.Error())
 	}
 
-	return []string{"+OK\r\n"}, nil
+	if ch.ServerInfo.Role == RoleSlave {
+		return []string{}, nil
+	}
+
+	return OKResponse(), nil
 }
 
 func (ch *CommandsHandler) GetHandler(requestLines []string) ([]string, error) {
@@ -133,20 +166,28 @@ func (ch *CommandsHandler) GetHandler(requestLines []string) ([]string, error) {
 		return []string{"$-1\r\n"}, nil
 	}
 
-	return []string{buildResponse(val)}, nil
+	resp, err := ResponseBuilder(BulkStringsRespType, val)
+	if err != nil {
+		return nil, fmt.Errorf("error creating response: %s", err.Error())
+	}
+	return []string{resp}, nil
 }
 
 func (ch *CommandsHandler) InfoHandler(requestLines []string) ([]string, error) {
-	fmt.Printf("--- debug ServerInfo---\nRole:%s\nReplicationID:%s\nOffset:%v\n", ch.ServerInfo.Role, ch.ServerInfo.MasterReplicationID, ch.ServerInfo.MasterReplicationOffset)
-	return []string{buildResponse(
-		fmt.Sprintf("%s:%s", INFO_ROLE, ch.ServerInfo.Role), 
-		fmt.Sprintf("%s:%s", INFO_MASTER_REPLICATION_ID, ch.ServerInfo.MasterReplicationID), 
-		fmt.Sprintf("%s:%v", INFO_MASTER_REPLICATION_OFFSET, ch.ServerInfo.MasterReplicationOffset),
-	)}, nil
+	resp, err := ResponseBuilder(
+		BulkStringsRespType,
+		fmt.Sprintf("%s:%s", InfoRole, ch.ServerInfo.Role), 
+		fmt.Sprintf("%s:%s", InfoMasterReplicationID, ch.ServerInfo.MasterReplicationID), 
+		fmt.Sprintf("%s:%v", InfoMasterReplicationOffset, ch.ServerInfo.MasterReplicationOffset),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating response: %s", err.Error())
+	}
+	return []string{resp}, nil
 }
 
 func (ch *CommandsHandler) ReplConfHandler() ([]string, error) {
-	return []string{"+OK\r\n"}, nil
+	return OKResponse(), nil
 }
 
 func (ch *CommandsHandler) PsyncHandler() ([]string, error) {
@@ -154,7 +195,7 @@ func (ch *CommandsHandler) PsyncHandler() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error getting raw rdb store: %s", err.Error())
 	}
-	
+
 	return []string{
 		fmt.Sprintf("+FULLRESYNC %s 0\r\n", ch.ServerInfo.MasterReplicationID),
 		fmt.Sprintf("$%v\r\n%s", len(rdb), rdb),
@@ -162,16 +203,5 @@ func (ch *CommandsHandler) PsyncHandler() ([]string, error) {
 }
 
 func (ch *CommandsHandler) FullResyncHandler() ([]string, error) {
-	return []string{"+OK\r\n"}, nil
-}
-
-func buildResponse(messages ...string) string {
-	var resp string
-	if len(messages) > 1 {
-		resp = strings.Join(messages, "\n")
-	} else {
-		resp = strings.Join(messages, "")
-	}
-
-	return fmt.Sprintf("$%v\r\n%s\r\n", len(resp), resp)
+	return OKResponse(), nil
 }
