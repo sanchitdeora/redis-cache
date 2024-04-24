@@ -6,18 +6,18 @@ import (
 	"strings"
 )
 
-type Commands string
+type Command string
 
 const (
-	PING Commands = "PING"
-	ECHO Commands = "ECHO"
-	GET Commands = "GET"
-	SET Commands = "SET"
-	PX Commands = "PX"
-	INFO Commands = "INFO"
-	REPLCONF Commands = "REPLCONF"
-	PSYNC Commands = "PSYNC"
-	FULLRESYNC Commands = "FULLRESYNC"
+	PING Command = "PING"
+	ECHO Command = "ECHO"
+	GET Command = "GET"
+	SET Command = "SET"
+	PX Command = "PX"
+	INFO Command = "INFO"
+	REPLCONF Command = "REPLCONF"
+	PSYNC Command = "PSYNC"
+	FULLRESYNC Command = "FULLRESYNC"
 
 	// info response constants
 	InfoRole = "role"
@@ -29,13 +29,13 @@ type CommandOpts struct {
 	ServerInfo ServerOpts
 }
 
-type CommandsHandler struct {
+type Commands struct {
 	CommandOpts
 	Store Store
 }
 
-func NewCommandsHandler(opts CommandOpts) CommandsHandler{
-	return CommandsHandler{
+func NewCommandsHandler(opts CommandOpts) Commands{
+	return Commands{
 		CommandOpts: opts,
 		Store: NewStore(),
 	}
@@ -44,36 +44,71 @@ func NewCommandsHandler(opts CommandOpts) CommandsHandler{
 func IsWriteCommand(req string) bool {
 	requestLines, err := ParseRequest(req) 
 	if err != nil {
+		fmt.Printf("error parsing request: %s", err.Error())
 		return false
 	}
 
-	if Commands(strings.ToUpper(requestLines[2])) == SET {
+	if Command(strings.ToUpper(requestLines[2])) == SET {
 		return true
 	}
+
 	return false
 }
 
-func IsPsyncCommand(req string) bool {
-	requestLines, err := ParseRequest(req) 
+func IsPsyncCommand(fullRequest string) bool {
+	reqs, err := ParserMultiLineRequest(fullRequest)
 	if err != nil {
 		return false
 	}
 
-	if Commands(strings.ToUpper(requestLines[2])) == PSYNC {
-		return true
+	for _, req := range reqs {
+		requestLines, err := ParseRequest(req) 
+		if err != nil {
+			return false
+		}
+	
+		if Command(strings.ToUpper(requestLines[2])) == PSYNC {
+			return true
+		}
 	}
 	return false
+}
+
+func CompletePartialRequest(req string) string {
+	if req[0:1] != ArraysFirstChar {
+		req = ArraysFirstChar + req[0:]
+	}
+	return req
 }
 
 // parsing redis-like input protocols
-func (ch *CommandsHandler) ParseCommands(req string) ([]string, error) {			
-	requestLines, err := ParseRequest(req) 
+func (ch *Commands) ParseCommands(fullRequest string) ([]string, error) {			
+	reqs, err := ParserMultiLineRequest(fullRequest)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error while parsing commands: %s", err.Error())
 	}
 
-	command := Commands(strings.ToUpper(requestLines[2]))
+	resList := make([]string, 0)
+	for _, req := range reqs {
+		requestLines, err := ParseRequest(req)	
+		if err != nil {
+			return nil, fmt.Errorf("error while parsing commands: %s", err.Error())
+		}
 
+		res, err := ch.CommandsHandler(requestLines)
+		if err != nil {
+			return nil, fmt.Errorf("error while parsing commands: %s", err.Error())
+		}
+		
+		resList = append(resList, res...)
+	}
+	return resList, nil
+}
+
+func (ch *Commands) CommandsHandler(requestLines []string) ([]string, error) {
+
+	command := Command(strings.ToUpper(requestLines[2]))
+	
 	switch command {
 		case PING:
 			return ch.PingHandler()
@@ -105,7 +140,7 @@ func (ch *CommandsHandler) ParseCommands(req string) ([]string, error) {
 }
 
 // Command Handlers
-func (ch *CommandsHandler) PingHandler() ([]string, error) {
+func (ch *Commands) PingHandler() ([]string, error) {
 	resp, err := ResponseBuilder(SimpleStringsRespType, "PONG")
 	if err != nil {
 		return nil, fmt.Errorf("error creating response: %s", err.Error())
@@ -113,7 +148,7 @@ func (ch *CommandsHandler) PingHandler() ([]string, error) {
 	return []string{resp}, nil
 }
 
-func (ch *CommandsHandler) EchoHandler(requestLines []string) ([]string, error) {
+func (ch *Commands) EchoHandler(requestLines []string) ([]string, error) {
 	if len(requestLines) < 5 {
 		return nil, fmt.Errorf("invalid command received. ECHO should have one arguments: %s", requestLines)
 	}
@@ -125,14 +160,14 @@ func (ch *CommandsHandler) EchoHandler(requestLines []string) ([]string, error) 
 	return []string{resp}, nil
 }
 
-func (ch *CommandsHandler) SetHandler(requestLines []string) ([]string, error) {
+func (ch *Commands) SetHandler(requestLines []string) ([]string, error) {
 	if len(requestLines) < 7 {
 		return nil, fmt.Errorf("invalid command received. SET should have more arguments: %s", requestLines)
 	}
 
 	var expiration int64 = -1
 	if len(requestLines) >= 11 {
-		command := Commands(strings.ToUpper(requestLines[8]))
+		command := Command(strings.ToUpper(requestLines[8]))
 		if command == PX {
 			convertedExpiration, err := strconv.ParseInt(requestLines[10], 10, 64)
 			if err != nil {
@@ -153,7 +188,7 @@ func (ch *CommandsHandler) SetHandler(requestLines []string) ([]string, error) {
 	return OKResponse(), nil
 }
 
-func (ch *CommandsHandler) GetHandler(requestLines []string) ([]string, error) {
+func (ch *Commands) GetHandler(requestLines []string) ([]string, error) {
 	if len(requestLines) < 5 {
 		return nil, fmt.Errorf("invalid command received. GET should have more arguments: %s", requestLines)
 	}
@@ -173,7 +208,7 @@ func (ch *CommandsHandler) GetHandler(requestLines []string) ([]string, error) {
 	return []string{resp}, nil
 }
 
-func (ch *CommandsHandler) InfoHandler(requestLines []string) ([]string, error) {
+func (ch *Commands) InfoHandler(requestLines []string) ([]string, error) {
 	resp, err := ResponseBuilder(
 		BulkStringsRespType,
 		fmt.Sprintf("%s:%s", InfoRole, ch.ServerInfo.Role), 
@@ -186,11 +221,11 @@ func (ch *CommandsHandler) InfoHandler(requestLines []string) ([]string, error) 
 	return []string{resp}, nil
 }
 
-func (ch *CommandsHandler) ReplConfHandler() ([]string, error) {
+func (ch *Commands) ReplConfHandler() ([]string, error) {
 	return OKResponse(), nil
 }
 
-func (ch *CommandsHandler) PsyncHandler() ([]string, error) {
+func (ch *Commands) PsyncHandler() ([]string, error) {
 	rdb, err := ch.Store.ToRDBStore()
 	if err != nil {
 		return nil, fmt.Errorf("error getting raw rdb store: %s", err.Error())
@@ -202,6 +237,6 @@ func (ch *CommandsHandler) PsyncHandler() ([]string, error) {
 	}, nil
 }
 
-func (ch *CommandsHandler) FullResyncHandler() ([]string, error) {
+func (ch *Commands) FullResyncHandler() ([]string, error) {
 	return OKResponse(), nil
 }

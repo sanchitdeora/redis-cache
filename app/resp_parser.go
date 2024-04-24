@@ -55,14 +55,23 @@ func ResponseBuilder(respType RESPType, args ...string) (string, error) {
 	return "", nil
 }
 
+func ParserMultiLineRequest(multiReq string) ([]string, error) {
+	return strings.Split(multiReq, ArraysFirstChar)[1:], nil
+}
+
 func ParseRequest(req string) ([]string, error) {
 	// remove the empty string at the end
+
 	requestLines := strings.Split(req, CLRF)
 	requestLines = requestLines[0:len(requestLines)-1]
 
 	err := requestValidator(requestLines)
 	if err != nil {
 		return nil, fmt.Errorf("invalid command received: %s", requestLines)
+	}
+
+	if requestLines[0][0:1] != ArraysFirstChar {
+		requestLines[0] = ArraysFirstChar + requestLines[0]
 	}
 
 	return requestLines, nil
@@ -74,12 +83,12 @@ func requestValidator(request []string) error {
 	}
 
 	// should start with an asterisk (*) 
-	if request[0][0:1] != ArraysFirstChar {
-		return fmt.Errorf("request is not an array: %s", request)
+	if request[0][0:1] == ArraysFirstChar {
+		request[0] = request[0][1:]
 	}
 
 	// asterisk should be followed by the size of array
-	arraySizeStr := request[0][1:]
+	arraySizeStr := request[0][0:]
 	arraySize, err := strconv.Atoi(arraySizeStr)
 	if err != nil {
 		return fmt.Errorf("invalid array size received: %s", arraySizeStr)

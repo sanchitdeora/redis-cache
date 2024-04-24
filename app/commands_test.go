@@ -15,7 +15,7 @@ const (
 	TEST_REPLICATION_ID = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 )
 
-func createCommandsHandler(role Role) CommandsHandler{
+func createCommandsHandler(role Role) Commands{
 	return NewCommandsHandler(
 		CommandOpts{
 			ServerInfo: ServerOpts{
@@ -63,6 +63,15 @@ func TestParseCommands_SetWithExpiration(t *testing.T) {
 	val, err := handler.ParseCommands(string(buf))
 	assert.Nil(t, err)
 	assert.Equal(t, []string{"+OK\r\n"}, val)
+}
+
+func TestParseCommands_SlaveReceiveMultipleSetsWithExpiration_SendsNoResponse(t *testing.T) {
+	handler := createCommandsHandler(RoleSlave)
+
+	buf := []byte("*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")	
+	val, err := handler.ParseCommands(string(buf))
+	assert.Nil(t, err)
+	assert.Equal(t, []string{}, val)
 }
 
 func TestParseCommands_Get(t *testing.T) {
@@ -119,7 +128,7 @@ func TestParseCommands_PSync(t *testing.T) {
 // TestParseRequest
 
 func TestParseRequest(t *testing.T) {
-	req, err := ParseRequest("*1\r\n$4\r\nping\r\n")
+	req, err := ParseRequest("1\r\n$4\r\nping\r\n")
 	assert.Nil(t, err)
 	assert.Equal(t, []string{"*1", "$4", "ping"}, req)
 
@@ -127,7 +136,15 @@ func TestParseRequest(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, []string{"*2", "$4", "echo", "$11", "Hello World"}, req)
 
-	req, err = ParseRequest("*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")
+	req, err = ParseRequest("5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")
 	assert.Nil(t, err)
 	assert.Equal(t, []string{"*5", "$3", "set", "$5", "mango", "$9", "raspberry", "$2", "px", "$3", "100"}, req)
+}
+
+func TestIsWriteCommand(t *testing.T) {
+	isWrite := IsWriteCommand("*1\r\n$4\r\nping\r\n")
+	assert.False(t, isWrite)
+	
+	isWrite = IsWriteCommand("3\r\n$3\r\nset\r\n$3\r\nbaz\r\n$3\r\n789\r\n")
+	assert.True(t, isWrite)
 }
