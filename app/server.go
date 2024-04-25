@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	// "strings"
 )
 
 type Role string
@@ -35,6 +36,7 @@ type ServerOpts struct {
 	Role Role
 	MasterReplicationID string
 	MasterReplicationOffset int64
+
 	MasterHost string
 	MasterPort string
 }
@@ -45,7 +47,7 @@ type Server struct {
 	commands  Commands
 
 	MasterConn net.Conn
-	Replicas []net.Conn
+	Replicas map[net.Conn]int
 }
 
 // NewServer() Creates a new Server
@@ -54,10 +56,10 @@ func NewServer(opts ServerOpts) Server {
 		ServerOpts: opts,
 		commands: NewCommandsHandler(
 			CommandOpts{
-				ServerInfo: opts,
+				ServerOpts: opts,
 			},
 		),
-		Replicas: make([]net.Conn, 0),
+		Replicas: make(map[net.Conn]int, 0),
 	}
 }
 
@@ -71,11 +73,14 @@ func main() {
 	}
 
 	if len(*replicaOfPtr) > 0 {
+		// Replica Props
 		opts.Role = RoleSlave
 		opts.MasterHost = *replicaOfPtr
 		opts.MasterPort = flag.Arg(0)
 		opts.MasterReplicationOffset = -1
+	
 	} else {
+		// master Props
 		opts.Role = RoleMaster
 		opts.MasterReplicationID = GenerateAlphaNumericString(ReplicaIdLength)
 		opts.MasterReplicationOffset = 0
@@ -135,41 +140,58 @@ func (s *Server) handleConn(conn net.Conn) {
 
 		// parse requests
 		req := string(buf[:n])
-		responses, err := s.commands.ParseCommands(req)
+		
+		err = s.HandleRequests(conn, req)
 		if err != nil {
-			fmt.Println("error parsing commands: ", err.Error())
+			fmt.Printf("error processing request: %s", err.Error())
 			return
 		}
-
-		// store replicas
-		if IsPsyncCommand(req) {
-			s.Replicas = append(s.Replicas, conn)
-		}
-
-		// write responses
-		s.writeMessages(conn, responses)
-
-		// send write commands to replicas
-		s.sendWriteCommandsToReplicas(req)
 	}
 }
 
+func (s *Server) HandleRequests(conn net.Conn, req string) error {
+	// parse requests
+	responses, err := s.commands.ParseCommands(req)
+	if err != nil {
+		return fmt.Errorf("error parsing commands: %s", err.Error())
+	}
+
+	// store replicas
+	if ContainsPsyncCommand(req) {
+		_, ok := s.Replicas[conn]
+		if !ok {
+			s.Replicas[conn] = 0
+		}
+	}
+
+	// write responses
+	err = s.writeMessages(conn, responses)
+	if err != nil {
+		return fmt.Errorf("error writing messages: %s", err.Error())
+	}
+
+	// send write commands to replicas
+	err = s.sendWriteCommandsToReplicas(req)
+	if err != nil {
+		return fmt.Errorf("error sending writing commands to replicas: %s", err.Error())
+	}
+
+	return nil
+}
+
 func (s *Server) sendWriteCommandsToReplicas(fullRequest string) error {
-	reqs, err := ParserMultiLineRequest(fullRequest)
+	reqs, err := ParseRequest(fullRequest)
 	if err != nil {
 		return fmt.Errorf("error parsing commands: %s", err.Error())
 	}
 
 	for _, req := range reqs {
-		request := CompletePartialRequest(req)
-		if err != nil {
-			return fmt.Errorf("error parsing request: %s", err.Error())
-		}
-
-		fmt.Printf("---DEBUG---\nRequest: %s, Role: %s, IsWriteCommand: %v\n", request, s.Role, IsWriteCommand(request))
-		if s.Role == RoleMaster && IsWriteCommand(request) {
-			for _, replica := range s.Replicas {
-				replica.Write([]byte(request))
+		fmt.Printf("---DEBUG---\nRequest: %s, Role: %s, IsWriteCommand: %v\n", req, s.Role, IsWriteCommand(req))
+		if s.Role == RoleMaster && IsWriteCommand(req) {
+			fmt.Printf("---DEBUG---\nList of replicas length: %v\n", len(s.Replicas))
+			for replica, offset := range s.Replicas {
+				fmt.Printf("---DEBUG---\nReplica Host: %s, Offset: %v\n", replica.LocalAddr(), offset)
+				replica.Write([]byte(req))
 			}
 		}
 	}
@@ -253,10 +275,9 @@ func (s *Server) handshakeMaster() {
 		return
 	}
 
-	n, err := conn.Read(buf)
-	if err != nil {
-		fmt.Println("error reading from connection: ", err.Error())
-		return
-	}
-	fmt.Printf("display handshake PSYNC resp1: %s", buf[:n])
+	// n, err := conn.Read(buf)
+	// if err != nil {
+	// 	fmt.Println("error reading from connection: ", err.Error())
+	// 	return
+	// } 
 }

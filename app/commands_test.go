@@ -18,7 +18,7 @@ const (
 func createCommandsHandler(role Role) Commands{
 	return NewCommandsHandler(
 		CommandOpts{
-			ServerInfo: ServerOpts{
+			ServerOpts: ServerOpts{
 				ListnerPort: DefaultListenerPort,
 				Role: role,
 				MasterReplicationID: TEST_REPLICATION_ID,
@@ -120,7 +120,7 @@ func TestParseCommands_PSync(t *testing.T) {
 	val, err := handler.ParseCommands(string(buf))
 	assert.Nil(t, err)
 	assert.Equal(t, []string{
-		fmt.Sprintf("+FULLRESYNC %s 0\r\n", handler.ServerInfo.MasterReplicationID),
+		fmt.Sprintf("+FULLRESYNC %s 0\r\n", handler.ServerOpts.MasterReplicationID),
 		"$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2",
 	}, val)
 }
@@ -128,23 +128,60 @@ func TestParseCommands_PSync(t *testing.T) {
 // TestParseRequest
 
 func TestParseRequest(t *testing.T) {
-	req, err := ParseRequest("1\r\n$4\r\nping\r\n")
+	req, err := ParseRequest("*1\r\n$4\r\nping\r\n")
 	assert.Nil(t, err)
-	assert.Equal(t, []string{"*1", "$4", "ping"}, req)
+	assert.Equal(t, []string{"*1\r\n$4\r\nping\r\n"}, req)
+
+	_, err = ParseRequest("1\r\n$4\r\nping\r\n")
+	assert.NotNil(t, err)
 
 	req, err = ParseRequest("*2\r\n$4\r\necho\r\n$11\r\nHello World\r\n")
 	assert.Nil(t, err)
-	assert.Equal(t, []string{"*2", "$4", "echo", "$11", "Hello World"}, req)
+	assert.Equal(t, []string{"*2\r\n$4\r\necho\r\n$11\r\nHello World\r\n"}, req)
 
-	req, err = ParseRequest("5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")
+	req, err = ParseRequest("+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n")
 	assert.Nil(t, err)
-	assert.Equal(t, []string{"*5", "$3", "set", "$5", "mango", "$9", "raspberry", "$2", "px", "$3", "100"}, req)
+	assert.Equal(t, []string{"+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n"}, req)
+
+	req, err = ParseRequest("$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2")
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2"}, req)
+
+	req, err = ParseRequest("+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n")
+	assert.Nil(t, err)
+	assert.Equal(t, []string{
+		"+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n",
+		"$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2",
+		"*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n",
+	}, req)
+
+	req, err = ParseRequest("*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")
+	assert.Nil(t, err)
+	assert.Equal(t, []string{
+		"*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n",
+		"*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n",
+		"*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n",
+	}, req)
 }
 
 func TestIsWriteCommand(t *testing.T) {
 	isWrite := IsWriteCommand("*1\r\n$4\r\nping\r\n")
 	assert.False(t, isWrite)
-	
-	isWrite = IsWriteCommand("3\r\n$3\r\nset\r\n$3\r\nbaz\r\n$3\r\n789\r\n")
+
+	isWrite = IsWriteCommand("*3\r\n$3\r\nset\r\n$3\r\nbaz\r\n$3\r\n789\r\n")
+	assert.True(t, isWrite)
+}
+
+func TestIsPsyncCommand(t *testing.T) {
+	isWrite := ContainsPsyncCommand("*1\r\n$4\r\nping\r\n")
+	assert.False(t, isWrite)
+
+	isWrite = ContainsPsyncCommand("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
+	assert.True(t, isWrite)
+
+	isWrite = ContainsPsyncCommand("*1\r\n$4\r\nping\r\n*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
+	assert.True(t, isWrite)
+
+	isWrite = ContainsPsyncCommand("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
 	assert.True(t, isWrite)
 }
