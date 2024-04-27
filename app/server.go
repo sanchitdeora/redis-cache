@@ -39,6 +39,8 @@ type ServerOpts struct {
 
 	MasterHost string
 	MasterPort string
+
+	ReplicaOffset int64
 }
 
 type Server struct {
@@ -78,12 +80,14 @@ func main() {
 		opts.MasterHost = *replicaOfPtr
 		opts.MasterPort = flag.Arg(0)
 		opts.MasterReplicationOffset = -1
+		opts.ReplicaOffset = 0
 	
 	} else {
 		// master Props
 		opts.Role = RoleMaster
 		opts.MasterReplicationID = GenerateAlphaNumericString(ReplicaIdLength)
 		opts.MasterReplicationOffset = 0
+		opts.ReplicaOffset = -1
 	}
 
 	server := NewServer(opts)

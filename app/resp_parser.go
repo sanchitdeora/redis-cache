@@ -184,3 +184,11 @@ func SplitRequests(req string) []string {
 	
 	return requestLines
 }
+
+func CombineRequests(reqs []string, isRespRequest bool) string {
+	req := strings.Join(reqs, CLRF)
+	if isRespRequest {
+		req += CLRF
+	}
+	return req
+}

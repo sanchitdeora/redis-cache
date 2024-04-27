@@ -28,7 +28,7 @@ const (
 )
 
 type CommandOpts struct {
-	ServerOpts
+	ServerOpts ServerOpts
 }
 
 type Commands struct {
@@ -102,7 +102,7 @@ func (ch *Commands) ParseCommands(fullRequest string) ([]string, error) {
 	return resList, nil
 }
 
-func (ch *Commands) CommandsHandler(requestLines []string) ([]string, error) {
+func (ch *Commands) CommandsHandler(requestLines []string) (resp []string, err error) {
 	// exception command cases
 	if len(requestLines) == 1 {
 		if strings.Contains(requestLines[0], string(FULLRESYNC)) {
@@ -121,35 +121,46 @@ func (ch *Commands) CommandsHandler(requestLines []string) ([]string, error) {
 	}
 
 	command := Command(strings.ToUpper(requestLines[2]))
-	
+
 	switch command {
 		case PING:
-			return ch.PingHandler()
+			resp, err = ch.PingHandler()
 
 		case ECHO:
-			return ch.EchoHandler(requestLines)
+			resp, err = ch.EchoHandler(requestLines)
 
 		case SET:
-			return ch.SetHandler(requestLines)
+			resp, err = ch.SetHandler(requestLines)
 
 		case GET:
-			return ch.GetHandler(requestLines)
+			resp, err = ch.GetHandler(requestLines)
 
 		case INFO:
-			return ch.InfoHandler(requestLines)
+			resp, err = ch.InfoHandler(requestLines)
 
 		case REPLCONF:
-			return ch.ReplConfHandler(requestLines)
+			resp, err = ch.ReplConfHandler(requestLines)
 
 		case PSYNC:
-			return ch.PsyncHandler()
+			resp, err = ch.PsyncHandler()
 
 		case FULLRESYNC:
-			return ch.FullResyncHandler()
+			resp, err = ch.FullResyncHandler()
 
 		default:
 			return NullResponse(), fmt.Errorf("invalid command received: %s", command)
 	}
+
+	if err != nil {
+		return NullResponse(), fmt.Errorf("error receive handling command: %s", err.Error())
+	}
+
+	if ch.ServerOpts.Role == RoleSlave {
+		ch.ServerOpts.ReplicaOffset += int64(len(CombineRequests(requestLines, true)))
+		fmt.Printf("updating replicas offset to: %v\n", ch.ServerOpts.ReplicaOffset)
+	}
+
+	return resp, err
 }
 
 // Command Handlers
@@ -158,6 +169,12 @@ func (ch *Commands) PingHandler() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating response: %s", err.Error())
 	}
+
+	// replicas should not respond to non-REPLCONF commands
+	if ch.ServerOpts.Role == RoleSlave {
+		return []string{}, nil
+	}
+
 	return []string{resp}, nil
 }
 
@@ -194,6 +211,11 @@ func (ch *Commands) SetHandler(requestLines []string) ([]string, error) {
 		return nil, fmt.Errorf("error while setting in store: %s", err.Error())
 	}
 
+	if ch.ServerOpts.Role == RoleSlave {
+		return []string{}, nil
+	}
+
+	// replicas should not respond to non-REPLCONF commands
 	if ch.ServerOpts.Role == RoleSlave {
 		return []string{}, nil
 	}
@@ -242,7 +264,11 @@ func (ch *Commands) ReplConfHandler(requestLines []string) ([]string, error) {
 	}
 
 	if ch.ServerOpts.Role == RoleSlave && strings.ToUpper(requestLines[4]) == string(GETACK) {
-		return []string{fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%v\r\n%s\r\n", len(strconv.Itoa(int(ch.MasterReplicationOffset))), strconv.Itoa(int(ch.MasterReplicationOffset)))}, nil
+		return []string{
+			fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%v\r\n%s\r\n", 
+				len(strconv.Itoa(int(ch.ServerOpts.ReplicaOffset))), 
+				strconv.Itoa(int(ch.ServerOpts.ReplicaOffset))),
+		}, nil
 	}
 
 	return OKResponse(), nil
