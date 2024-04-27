@@ -23,7 +23,12 @@ func createCommandsHandler(role Role) Commands{
 			MasterReplicationID: TEST_REPLICATION_ID,
 			MasterReplicationOffset: 0,
 		},
-		CommandOpts{},
+		CommandOpts{
+			RDBConfig: RDBConfig {
+				Dir: "/tmp/rdbfiles2745828287",
+				DbFileName: "orange.rdb",
+			},
+		},
 	)
 }
 
@@ -123,6 +128,16 @@ func TestParseCommands_PSync(t *testing.T) {
 		"$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2",
 	}, val)
 }
+
+func TestConfigHandler(t *testing.T) {
+	handler := createCommandsHandler(RoleMaster)
+
+	buf := []byte("*3\r\n$6\r\nCONFIG\r\n$3\r\nget\r\n$3\r\ndir\r\n")
+	val, err := handler.ParseCommands(string(buf))
+	assert.Nil(t, err)
+	assert.Equal(t, []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(handler.RDBConfig.Dir), handler.RDBConfig.Dir)}, val)
+}
+
 
 // TestParseRequest
 

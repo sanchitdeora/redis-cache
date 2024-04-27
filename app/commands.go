@@ -26,6 +26,7 @@ const (
 	FULLRESYNC Command = "FULLRESYNC"
 	ACK Command = "ACK"
 	GETACK Command = "GETACK"
+	CONFIG Command = "CONFIG"
 
 	// info response constants
 	InfoRole = "role"
@@ -33,8 +34,13 @@ const (
 	InfoMasterReplicationOffset = "master_repl_offset"
 )
 
-type CommandOpts struct {
+type RDBConfig struct {
+	Dir string
+	DbFileName string
+}
 
+type CommandOpts struct {
+	RDBConfig RDBConfig
 }
 
 type Commands struct {
@@ -46,6 +52,7 @@ type Commands struct {
 func NewCommandsHandler(sOpts ServerOpts, cOpts CommandOpts) Commands{
 	return Commands{
 		ServerOpts: sOpts,
+		CommandOpts: cOpts,
 		Store: NewStore(),
 	}
 }
@@ -157,6 +164,8 @@ func (ch *Commands) CommandsHandler(requestLines []string) (resp []string, err e
 		case FULLRESYNC:
 			resp, err = ch.FullResyncHandler()
 
+		case CONFIG:
+			resp, err = ch.ConfigHandler(requestLines)
 		default:
 			return NullResponse(), fmt.Errorf("invalid command received: %s", command)
 	}
@@ -366,6 +375,26 @@ func (ch *Commands) WaitHandler(requestLines []string) (res []string, err error)
 }
 
 func (ch *Commands) FullResyncHandler() ([]string, error) {
+	return []string{}, nil
+}
+
+func (ch *Commands) ConfigHandler(requestLines []string) ([]string, error) {
+	if len(requestLines) < 7 {
+		return nil, fmt.Errorf("invalid command received. CONFIG should have more arguments: %s", requestLines)
+	}
+
+	switch Command(strings.ToUpper(requestLines[4])) {
+		case GET:
+			switch strings.ToUpper(requestLines[6]) {
+				case "DIR":
+					return []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(ch.RDBConfig.Dir), ch.RDBConfig.Dir)}, nil
+
+				case "DBFILENAME":
+					return []string{fmt.Sprintf("*2\r\n$10\r\ndbfilename\r\n$%v\r\n%s\r\n", len(ch.RDBConfig.DbFileName), ch.RDBConfig.DbFileName)}, nil
+
+			}
+	}
+
 	return []string{}, nil
 }
 

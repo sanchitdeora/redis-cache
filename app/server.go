@@ -14,13 +14,19 @@ type Role string
 const (
 	DefaultListenerPort = "6379"
 	DefaultBufferSize = 4096
-	
+
 	// flag constants
 	FlagPort = "port"
 	FlagPortUsage = "port to listen on"
-	
+
 	FlagReplicaOf = "replicaof"
 	FlagReplicaOfUsage = "server role"
+
+	FlagDir = "dir"
+	FlagDirUsage = "Provide directory location"
+
+	FlagDBFileName = "dbfilename"
+	FlagDBFileNameUsage = "Provides DB File Name"
 
 	// server constants
 	TcpNetwork = "tcp"
@@ -54,43 +60,51 @@ type Server struct {
 }
 
 // NewServer() Creates a new Server
-func NewServer(opts ServerOpts) Server {
+func NewServer(sOpts ServerOpts, cOpts CommandOpts) Server {
 	return Server{
-		ServerOpts: opts,
-		commands: NewCommandsHandler(
-			opts,
-			CommandOpts{},
-		),
+		ServerOpts: sOpts,
+		commands: NewCommandsHandler(sOpts, cOpts),
 	}
 }
 
 func main() {
 	portPtr := flag.String(FlagPort, DefaultListenerPort, FlagPortUsage)
 	replicaOfPtr := flag.String(FlagReplicaOf, "", FlagReplicaOfUsage)
+
+	dirPtr := flag.String(FlagDir, ".", "--dir")
+	dbFileNamePtr := flag.String(FlagDBFileName, "dump.rdb", "--dbfilename")
+
 	flag.Parse()
 
-	opts := ServerOpts{
+	sOpts := ServerOpts{
 		ListnerPort: *portPtr,
 		Replicas: make(map[net.Conn]int, 0),
 	}
 
 	if len(*replicaOfPtr) > 0 {
 		// Replica Props
-		opts.Role = RoleSlave
-		opts.MasterHost = *replicaOfPtr
-		opts.MasterPort = flag.Arg(0)
-		opts.MasterReplicationOffset = -1
-		opts.ReplicaOffset = 0
+		sOpts.Role = RoleSlave
+		sOpts.MasterHost = *replicaOfPtr
+		sOpts.MasterPort = flag.Arg(0)
+		sOpts.MasterReplicationOffset = -1
+		sOpts.ReplicaOffset = 0
 	
 	} else {
 		// master Props
-		opts.Role = RoleMaster
-		opts.MasterReplicationID = GenerateAlphaNumericString(ReplicaIdLength)
-		opts.MasterReplicationOffset = 0
-		opts.ReplicaOffset = -1
+		sOpts.Role = RoleMaster
+		sOpts.MasterReplicationID = GenerateAlphaNumericString(ReplicaIdLength)
+		sOpts.MasterReplicationOffset = 0
+		sOpts.ReplicaOffset = -1
 	}
 
-	server := NewServer(opts)
+	cOpts := CommandOpts{
+		RDBConfig: RDBConfig{
+			Dir: *dirPtr,
+			DbFileName: *dbFileNamePtr,
+		},
+	}
+
+	server := NewServer(sOpts, cOpts)
 
 	if server.Role == RoleSlave {
 		server.handshakeMaster()
