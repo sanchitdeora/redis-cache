@@ -41,6 +41,8 @@ type ServerOpts struct {
 	MasterPort string
 
 	ReplicaOffset int64
+
+	Replicas map[net.Conn]int
 }
 
 type Server struct {
@@ -49,7 +51,6 @@ type Server struct {
 	commands  Commands
 
 	MasterConn net.Conn
-	Replicas map[net.Conn]int
 }
 
 // NewServer() Creates a new Server
@@ -57,11 +58,9 @@ func NewServer(opts ServerOpts) Server {
 	return Server{
 		ServerOpts: opts,
 		commands: NewCommandsHandler(
-			CommandOpts{
-				ServerOpts: opts,
-			},
+			opts,
+			CommandOpts{},
 		),
-		Replicas: make(map[net.Conn]int, 0),
 	}
 }
 
@@ -72,6 +71,7 @@ func main() {
 
 	opts := ServerOpts{
 		ListnerPort: *portPtr,
+		Replicas: make(map[net.Conn]int, 0),
 	}
 
 	if len(*replicaOfPtr) > 0 {
@@ -140,7 +140,7 @@ func (s *Server) handleConn(conn net.Conn) {
 			return
 		}
 
-		fmt.Printf("Message Received: %s", buf[:n])
+		fmt.Printf("Message Received: %q\n", buf[:n])
 
 		// parse requests
 		req := string(buf[:n])
@@ -174,34 +174,9 @@ func (s *Server) HandleRequests(conn net.Conn, req string) error {
 		return fmt.Errorf("error writing messages: %s", err.Error())
 	}
 
-	// send write commands to replicas
-	err = s.sendWriteCommandsToReplicas(req)
-	if err != nil {
-		return fmt.Errorf("error sending writing commands to replicas: %s", err.Error())
-	}
-
 	return nil
 }
 
-func (s *Server) sendWriteCommandsToReplicas(fullRequest string) error {
-	reqs, err := ParseRequest(fullRequest)
-	if err != nil {
-		return fmt.Errorf("error parsing commands: %s", err.Error())
-	}
-
-	for _, req := range reqs {
-		fmt.Printf("---DEBUG---\nRequest: %s, Role: %s, IsWriteCommand: %v\n", req, s.Role, IsWriteCommand(req))
-		if s.Role == RoleMaster && IsWriteCommand(req) {
-			fmt.Printf("---DEBUG---\nList of replicas length: %v\n", len(s.Replicas))
-			for replica, offset := range s.Replicas {
-				fmt.Printf("---DEBUG---\nReplica Host: %s, Offset: %v\n", replica.LocalAddr(), offset)
-				replica.Write([]byte(req))
-			}
-		}
-	}
-
-	return nil
-}
 
 func (s *Server) writeMessages(conn net.Conn, messages []string) error {
 	if len(messages) == 0 {
@@ -220,7 +195,7 @@ func (s *Server) writeMessages(conn net.Conn, messages []string) error {
 func (s *Server) handshakeMaster() {
 	conn, err := net.Dial(TcpNetwork, fmt.Sprintf("%s:%s", s.MasterHost, s.MasterPort))
 	if err != nil {
-		fmt.Printf("Failed to bind to master host: %s port:%s error:%s", s.MasterHost, s.MasterPort, err.Error())
+		fmt.Printf("Failed to bind to master host: %s port:%s error:%s\n", s.MasterHost, s.MasterPort, err.Error())
 		return
 	}
 

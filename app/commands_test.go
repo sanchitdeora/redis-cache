@@ -17,14 +17,13 @@ const (
 
 func createCommandsHandler(role Role) Commands{
 	return NewCommandsHandler(
-		CommandOpts{
-			ServerOpts: ServerOpts{
-				ListnerPort: DefaultListenerPort,
-				Role: role,
-				MasterReplicationID: TEST_REPLICATION_ID,
-				MasterReplicationOffset: 0,
-			},
+		ServerOpts{
+			ListnerPort: DefaultListenerPort,
+			Role: role,
+			MasterReplicationID: TEST_REPLICATION_ID,
+			MasterReplicationOffset: 0,
 		},
+		CommandOpts{},
 	)
 }
 

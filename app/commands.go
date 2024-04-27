@@ -4,9 +4,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Command string
+
+var numReplicasAck int
+var numReplicasWait int
+var replicasWaitChan = make(chan bool, 1)
 
 const (
 	PING Command = "PING"
@@ -17,6 +22,7 @@ const (
 	INFO Command = "INFO"
 	REPLCONF Command = "REPLCONF"
 	PSYNC Command = "PSYNC"
+	WAIT Command = "WAIT"
 	FULLRESYNC Command = "FULLRESYNC"
 	ACK Command = "ACK"
 	GETACK Command = "GETACK"
@@ -28,17 +34,18 @@ const (
 )
 
 type CommandOpts struct {
-	ServerOpts ServerOpts
+
 }
 
 type Commands struct {
+	ServerOpts ServerOpts
 	CommandOpts
 	Store Store
 }
 
-func NewCommandsHandler(opts CommandOpts) Commands{
+func NewCommandsHandler(sOpts ServerOpts, cOpts CommandOpts) Commands{
 	return Commands{
-		CommandOpts: opts,
+		ServerOpts: sOpts,
 		Store: NewStore(),
 	}
 }
@@ -144,6 +151,9 @@ func (ch *Commands) CommandsHandler(requestLines []string) (resp []string, err e
 		case PSYNC:
 			resp, err = ch.PsyncHandler()
 
+		case WAIT:
+			resp, err = ch.WaitHandler(requestLines)
+
 		case FULLRESYNC:
 			resp, err = ch.FullResyncHandler()
 
@@ -220,6 +230,8 @@ func (ch *Commands) SetHandler(requestLines []string) ([]string, error) {
 		return []string{}, nil
 	}
 
+	go ch.SendToReplicas(CombineRequests(requestLines, true), nil)
+
 	return OKResponse(), nil
 }
 
@@ -257,21 +269,36 @@ func (ch *Commands) InfoHandler(requestLines []string) ([]string, error) {
 }
 
 func (ch *Commands) ReplConfHandler(requestLines []string) ([]string, error) {
-	
-	
-	if len(requestLines) < 3 {
+	if len(requestLines) < 7 {
 		return nil, fmt.Errorf("invalid command received. REPLCONF should have more arguments: %s", requestLines)
 	}
 
-	if ch.ServerOpts.Role == RoleSlave && strings.ToUpper(requestLines[4]) == string(GETACK) {
-		return []string{
-			fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%v\r\n%s\r\n", 
-				len(strconv.Itoa(int(ch.ServerOpts.ReplicaOffset))), 
-				strconv.Itoa(int(ch.ServerOpts.ReplicaOffset))),
-		}, nil
-	}
+	switch Command(requestLines[4]) {
+		case GETACK:
+			if ch.ServerOpts.Role == RoleSlave {
+				return []string{
+					fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%v\r\n%s\r\n", 
+						len(strconv.Itoa(int(ch.ServerOpts.ReplicaOffset))), 
+						strconv.Itoa(int(ch.ServerOpts.ReplicaOffset))),
+				}, nil
+			}
 
-	return OKResponse(), nil
+		case ACK:
+			if ch.ServerOpts.Role == RoleSlave {
+				return []string{}, nil
+			}
+
+			numReplicasAck ++
+			fmt.Printf("ACK!!! numACk: %v, numWait: %v\n", numReplicasAck, numReplicasWait)
+
+			if numReplicasAck >= numReplicasWait {
+				replicasWaitChan <- true
+			}
+		default:
+			return OKResponse(), nil
+
+	}
+	return []string{}, nil
 }
 
 func (ch *Commands) PsyncHandler() ([]string, error) {
@@ -286,10 +313,73 @@ func (ch *Commands) PsyncHandler() ([]string, error) {
 	}, nil
 }
 
+func (ch *Commands) WaitHandler(requestLines []string) (res []string, err error) {
+	if len(requestLines) < 7 {
+		return nil, fmt.Errorf("invalid command received. REPLCONF should have more arguments: %s", requestLines)
+	}
+
+	numReplicasAck = 0
+	countAck := 0
+
+	numReplicasWait, err = strconv.Atoi(requestLines[4])
+	if err != nil {
+		return nil, fmt.Errorf("error converting number of replicas to ACK: %s, error: %s", requestLines[4], err.Error())
+	}
+	timeoutMs, err := strconv.Atoi(requestLines[6])
+	if err != nil {
+		return nil, fmt.Errorf("error converting response time: %s, error: %s", requestLines[6], err.Error())
+	}
+
+	if numReplicasWait == 0 {
+		return []string{":0\r\n"}, nil
+	}
+
+	// respChan := make(chan bool, len(ch.ServerOpts.Replicas))
+	go ch.SendToReplicas("*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n", nil)
+
+	timeout := time.NewTimer(time.Duration(timeoutMs) * time.Millisecond)
+
+	defer timeout.Stop()
+
+	chanLoop: for {
+		select {
+			case <- replicasWaitChan:
+				countAck = numReplicasAck
+				fmt.Println("got ACK from replica: ", countAck)
+				break chanLoop
+
+			case <-timeout.C:
+				fmt.Println("time is out")
+				if numReplicasAck == 0 {
+					countAck = len(ch.ServerOpts.Replicas)
+				} else {
+					countAck = numReplicasAck
+				}
+			break chanLoop
+		}
+	}
+
+	numReplicasAck = 0
+	numReplicasWait = 0
+
+	return []string{fmt.Sprintf(":%v\r\n", countAck)}, nil
+}
+
 func (ch *Commands) FullResyncHandler() ([]string, error) {
 	return []string{}, nil
 }
 
 func (ch *Commands) RdbFileHandler() ([]string, error) {
 	return []string{}, nil
+}
+
+func (ch *Commands) SendToReplicas(request string, respChan chan bool) error {
+	fmt.Printf("send To Replicas message: %q\n", request)
+	for replicaConn := range ch.ServerOpts.Replicas {
+		_, err := replicaConn.Write([]byte(request))
+		if err != nil {
+			return fmt.Errorf("error writing commands: %s", err.Error())
+		}
+	}
+	return nil
 }

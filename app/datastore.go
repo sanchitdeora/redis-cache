@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"fmt"
 	"time"
 )
 
@@ -32,8 +31,6 @@ func (s *Store) Set(key string, val string, expDur int64) error {
 		expiration = time.Now().UnixMilli() + expDur
 	}
 
-	fmt.Printf("Expiration time: %v  Value expiration duration: %v\n", expiration, expDur)
-
 	value := &ValueStore{
 		Value:      val,
 		Expiration: expiration,
@@ -50,7 +47,6 @@ func (s *Store) Get(key string) (string, error) {
 	}
 
 	if val.Expiration > 0 && time.Now().UnixMilli() > val.Expiration {
-		fmt.Printf("Request receive time: %v  Value expiration time: %v\n", time.Now().UnixMilli(), val.Expiration)
 		// if value is expired, delete from store
 		delete(s.kvDataStore, key)
 		return "", nil
