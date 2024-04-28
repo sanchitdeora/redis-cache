@@ -14,11 +14,14 @@ var numReplicasWait int
 var replicasWaitChan = make(chan bool, 1)
 
 const (
+	// Basic Redis
 	PING Command = "PING"
 	ECHO Command = "ECHO"
 	GET Command = "GET"
 	SET Command = "SET"
 	PX Command = "PX"
+	
+	// Replication
 	INFO Command = "INFO"
 	REPLCONF Command = "REPLCONF"
 	PSYNC Command = "PSYNC"
@@ -26,7 +29,12 @@ const (
 	FULLRESYNC Command = "FULLRESYNC"
 	ACK Command = "ACK"
 	GETACK Command = "GETACK"
+	
+	// RDB Persistence
 	CONFIG Command = "CONFIG"
+	DIR Command = "DIR"
+	DB_FILE_NAME Command = "DBFILENAME"
+	KEYS Command = "KEYS"
 
 	// info response constants
 	InfoRole = "role"
@@ -34,26 +42,15 @@ const (
 	InfoMasterReplicationOffset = "master_repl_offset"
 )
 
-type RDBConfig struct {
-	Dir string
-	DbFileName string
-}
-
-type CommandOpts struct {
-	RDBConfig RDBConfig
-}
-
 type Commands struct {
 	ServerOpts ServerOpts
-	CommandOpts
 	Store Store
 }
 
-func NewCommandsHandler(sOpts ServerOpts, cOpts CommandOpts) Commands{
+func NewCommandsHandler(serverOpts ServerOpts, storeOpts StoreOpts) Commands{
 	return Commands{
-		ServerOpts: sOpts,
-		CommandOpts: cOpts,
-		Store: NewStore(),
+		ServerOpts: serverOpts,
+		Store: NewStore(storeOpts),
 	}
 }
 
@@ -110,7 +107,7 @@ func (ch *Commands) ParseCommands(fullRequest string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error while parsing commands: %s", err.Error())
 		}
-		
+
 		resList = append(resList, res...)
 	}
 	return resList, nil
@@ -166,6 +163,10 @@ func (ch *Commands) CommandsHandler(requestLines []string) (resp []string, err e
 
 		case CONFIG:
 			resp, err = ch.ConfigHandler(requestLines)
+
+		case KEYS:
+			resp, err = ch.KeysHandler(requestLines)
+
 		default:
 			return NullResponse(), fmt.Errorf("invalid command received: %s", command)
 	}
@@ -385,17 +386,44 @@ func (ch *Commands) ConfigHandler(requestLines []string) ([]string, error) {
 
 	switch Command(strings.ToUpper(requestLines[4])) {
 		case GET:
-			switch strings.ToUpper(requestLines[6]) {
-				case "DIR":
-					return []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(ch.RDBConfig.Dir), ch.RDBConfig.Dir)}, nil
+			switch Command(strings.ToUpper(requestLines[6])) {
+				case DIR:
+					return []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(ch.Store.Config.Dir), ch.Store.Config.Dir)}, nil
 
-				case "DBFILENAME":
-					return []string{fmt.Sprintf("*2\r\n$10\r\ndbfilename\r\n$%v\r\n%s\r\n", len(ch.RDBConfig.DbFileName), ch.RDBConfig.DbFileName)}, nil
-
+				case DB_FILE_NAME:
+					return []string{fmt.Sprintf("*2\r\n$10\r\ndbfilename\r\n$%v\r\n%s\r\n", len(ch.Store.Config.DbFileName), ch.Store.Config.DbFileName)}, nil
+				
+				default:
+					fmt.Println("skipping unknown command received with CONFIG GET. request: ", requestLines)
+					return []string{}, nil
 			}
 	}
 
 	return []string{}, nil
+}
+
+func (ch *Commands) KeysHandler(requestLines []string) ([]string, error) {
+	if len(requestLines) < 5 {
+		return nil, fmt.Errorf("invalid command received. CONFIG should have more arguments: %s", requestLines)
+	}
+
+	switch strings.ToUpper(requestLines[4]) {
+
+		case "*":
+			keySet := ch.Store.GetKeys()
+			if len(keySet) == 0 {
+				return []string{}, nil
+			}
+
+			resp, err := ResponseBuilder(ArraysRespType, keySet...)
+			if err != nil {
+				return nil, fmt.Errorf("error creating response: %s", err.Error())
+			}
+			return []string{resp}, nil
+
+		default:
+			return []string{}, nil
+	}
 }
 
 func (ch *Commands) RdbFileHandler() ([]string, error) {

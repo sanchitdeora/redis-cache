@@ -39,6 +39,7 @@ func NullResponse() []string {
 	return []string{"-1\r\n"}
 }
 
+
 func ResponseBuilder(respType RESPType, args ...string) (string, error) {
 	switch respType {
 		case SimpleStringsRespType:
@@ -53,13 +54,20 @@ func ResponseBuilder(respType RESPType, args ...string) (string, error) {
 				res = strings.Join(args, "\n")
 			}
 			return fmt.Sprintf("%s%v%s%s%s", BulkStringsFirstChar, len(res), CLRF, res, CLRF), nil
-		}
-	return "", nil
-}
+		
+		case ArraysRespType:
+			if len(args) == 0 {
+				return "", fmt.Errorf("invalid response. arrays cannot have zero arguments")
+			}
 
-// assuming there are no nested requests
-func ParserMultiLineRequest(multiReq string) ([]string, error) {
-	return strings.Split(multiReq, ArraysFirstChar)[1:], nil
+			resp := fmt.Sprintf("%s%v%s", ArraysFirstChar, len(args), CLRF)
+			for _, arg := range args {
+				resp += fmt.Sprintf("%s%v%s%s%s", BulkStringsFirstChar, len(arg), CLRF, arg, CLRF)
+			}
+			return resp, nil
+		}
+
+	return "", nil
 }
 
 func ParseRequest(req string) (cReqs []string, err error) {

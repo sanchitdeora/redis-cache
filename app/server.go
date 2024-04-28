@@ -60,10 +60,10 @@ type Server struct {
 }
 
 // NewServer() Creates a new Server
-func NewServer(sOpts ServerOpts, cOpts CommandOpts) Server {
+func NewServer(serverOpts ServerOpts, storeOpts StoreOpts) Server {
 	return Server{
-		ServerOpts: sOpts,
-		commands: NewCommandsHandler(sOpts, cOpts),
+		ServerOpts: serverOpts,
+		commands: NewCommandsHandler(serverOpts, storeOpts),
 	}
 }
 
@@ -76,41 +76,42 @@ func main() {
 
 	flag.Parse()
 
-	sOpts := ServerOpts{
+	serverOpts := ServerOpts{
 		ListnerPort: *portPtr,
 		Replicas: make(map[net.Conn]int, 0),
 	}
 
 	if len(*replicaOfPtr) > 0 {
 		// Replica Props
-		sOpts.Role = RoleSlave
-		sOpts.MasterHost = *replicaOfPtr
-		sOpts.MasterPort = flag.Arg(0)
-		sOpts.MasterReplicationOffset = -1
-		sOpts.ReplicaOffset = 0
+		serverOpts.Role = RoleSlave
+		serverOpts.MasterHost = *replicaOfPtr
+		serverOpts.MasterPort = flag.Arg(0)
+		serverOpts.MasterReplicationOffset = -1
+		serverOpts.ReplicaOffset = 0
 	
 	} else {
 		// master Props
-		sOpts.Role = RoleMaster
-		sOpts.MasterReplicationID = GenerateAlphaNumericString(ReplicaIdLength)
-		sOpts.MasterReplicationOffset = 0
-		sOpts.ReplicaOffset = -1
+		serverOpts.Role = RoleMaster
+		serverOpts.MasterReplicationID = GenerateAlphaNumericString(ReplicaIdLength)
+		serverOpts.MasterReplicationOffset = 0
+		serverOpts.ReplicaOffset = -1
 	}
 
-	cOpts := CommandOpts{
-		RDBConfig: RDBConfig{
+	storeOpts := StoreOpts{
+		Config: RDBConfig{
 			Dir: *dirPtr,
 			DbFileName: *dbFileNamePtr,
 		},
 	}
 
-	server := NewServer(sOpts, cOpts)
+	server := NewServer(serverOpts, storeOpts)
 
 	if server.Role == RoleSlave {
 		server.handshakeMaster()
 		go server.handleConn(server.MasterConn)
 	}
 
+	server.commands.Store.InitializeDB()
 	server.StartServer()
 }
 
@@ -146,7 +147,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		buf := make([]byte, DefaultBufferSize)
 		n, err := conn.Read(buf)
 		if err != nil {
-			fmt.Println("error reading from connection: ", err.Error())
+			fmt.Println("error reading from main connection: ", err.Error())
 			return
 		}
 		if n == 0 {
@@ -197,6 +198,7 @@ func (s *Server) writeMessages(conn net.Conn, messages []string) error {
 		return nil
 	}
 
+	fmt.Printf("writing messages to conn: %q\n", messages)
 	for _, message := range messages {
 		_, err := conn.Write([]byte(message))
 		if err != nil {

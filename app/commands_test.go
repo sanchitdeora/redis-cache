@@ -23,9 +23,9 @@ func createCommandsHandler(role Role) Commands{
 			MasterReplicationID: TEST_REPLICATION_ID,
 			MasterReplicationOffset: 0,
 		},
-		CommandOpts{
-			RDBConfig: RDBConfig {
-				Dir: "/tmp/rdbfiles2745828287",
+		StoreOpts{
+			Config: RDBConfig{
+				Dir: "./",
 				DbFileName: "orange.rdb",
 			},
 		},
@@ -135,7 +135,7 @@ func TestConfigHandler(t *testing.T) {
 	buf := []byte("*3\r\n$6\r\nCONFIG\r\n$3\r\nget\r\n$3\r\ndir\r\n")
 	val, err := handler.ParseCommands(string(buf))
 	assert.Nil(t, err)
-	assert.Equal(t, []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(handler.RDBConfig.Dir), handler.RDBConfig.Dir)}, val)
+	assert.Equal(t, []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(handler.Store.Config.Dir), handler.Store.Config.Dir)}, val)
 }
 
 
@@ -198,4 +198,54 @@ func TestIsPsyncCommand(t *testing.T) {
 
 	isWrite = ContainsPsyncCommand("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
 	assert.True(t, isWrite)
+}
+
+func TestReadFromRDBFile(t *testing.T) {
+	{
+		handler := createCommandsHandler(RoleMaster)
+		handler.Store.Config.DbFileName = "EmptyRDBTest"
+
+		store := handler.Store.InitializeDB()
+		assert.Equal(t, 0, len(store))
+	}
+
+	{
+		handler := createCommandsHandler(RoleMaster)
+		handler.Store.Config.DbFileName = "RDBTest"
+
+		store := handler.Store.InitializeDB()
+		assert.Equal(t, 1, len(store))
+	}
+}
+
+func TestResponseBuilder(t *testing.T) {
+	{
+		val, err := ResponseBuilder(SimpleStringsRespType, "FULLRESYNC 0 xxxxx")
+		assert.Nil(t, err)
+		assert.Equal(t, "+FULLRESYNC 0 xxxxx\r\n", val)
+
+		val, err = ResponseBuilder(SimpleStringsRespType, "FULLRESYNC 0 xxxxx", "testing")
+		assert.NotNil(t, err)
+		assert.Equal(t, "", val)
+	}
+
+	{
+		val, err := ResponseBuilder(BulkStringsRespType, "pear")
+		assert.Nil(t, err)
+		assert.Equal(t, "$4\r\npear\r\n", val)
+
+		val, err = ResponseBuilder(BulkStringsRespType, "pear", "banana")
+		assert.Nil(t, err)
+		assert.Equal(t, "$11\r\npear\nbanana\r\n", val)
+	}
+
+	{
+		val, err := ResponseBuilder(ArraysRespType, "pear")
+		assert.Nil(t, err)
+		assert.Equal(t, "*1\r\n$4\r\npear\r\n", val)
+
+		val, err = ResponseBuilder(ArraysRespType, "pear", "banana")
+		assert.Nil(t, err)
+		assert.Equal(t, "*2\r\n$4\r\npear\r\n$6\r\nbanana\r\n", val)
+	}
 }
