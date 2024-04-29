@@ -1,11 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	// "reflect"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/codecrafters-io/redis-starter-go/store"
 )
 
 type Command string
@@ -40,11 +43,7 @@ const (
 
 	// Streams
 	TYPE Command = "TYPE"
-
-
-	// Set Key Types
-	stringType KeyType = "string"
-	noneType KeyType = "none"
+	XADD Command = "XADD"
 
 	// info response constants
 	InfoRole = "role"
@@ -53,14 +52,15 @@ const (
 )
 
 type Commands struct {
-	ServerOpts ServerOpts
-	Store Store
+	ServerOpts 	ServerOpts
+	Store 		store.Store
+	// StreamStore store.StreamStore
 }
 
-func NewCommandsHandler(serverOpts ServerOpts, storeOpts StoreOpts) Commands{
+func NewCommandsHandler(serverOpts ServerOpts, storeOpts store.StoreOpts) Commands{
 	return Commands{
 		ServerOpts: serverOpts,
-		Store: NewStore(storeOpts),
+		Store: store.NewStore(storeOpts),
 	}
 }
 
@@ -180,6 +180,9 @@ func (ch *Commands) CommandsHandler(requestLines []string) (resp []string, err e
 		case TYPE:
 			resp, err = ch.TypeHandler(requestLines)
 
+		case XADD:
+			resp, err = ch.XAddHandler(requestLines)
+
 		default:
 			return NullResponse(), fmt.Errorf("invalid command received: %s", command)
 	}
@@ -198,17 +201,12 @@ func (ch *Commands) CommandsHandler(requestLines []string) (resp []string, err e
 
 // Command Handlers
 func (ch *Commands) PingHandler() ([]string, error) {
-	resp, err := ResponseBuilder(SimpleStringsRespType, "PONG")
-	if err != nil {
-		return nil, fmt.Errorf("error creating response: %s", err.Error())
-	}
-
 	// replicas should not respond to non-REPLCONF commands
 	if ch.ServerOpts.Role == RoleSlave {
 		return []string{}, nil
 	}
 
-	return []string{resp}, nil
+	return []string{ResponseBuilder(SimpleStringsRespType, "PONG")}, nil
 }
 
 func (ch *Commands) EchoHandler(requestLines []string) ([]string, error) {
@@ -216,11 +214,7 @@ func (ch *Commands) EchoHandler(requestLines []string) ([]string, error) {
 		return nil, fmt.Errorf("invalid command received. ECHO should have one arguments: %s", requestLines)
 	}
 
-	resp, err := ResponseBuilder(BulkStringsRespType, requestLines[4])
-	if err != nil {
-		return nil, fmt.Errorf("error creating response: %s", err.Error())
-	}
-	return []string{resp}, nil
+	return []string{ResponseBuilder(BulkStringsRespType, requestLines[4])}, nil
 }
 
 func (ch *Commands) SetHandler(requestLines []string) ([]string, error) {
@@ -240,7 +234,7 @@ func (ch *Commands) SetHandler(requestLines []string) ([]string, error) {
 		}
 	}
 
-	if err := ch.Store.Set(requestLines[4], requestLines[6], expiration); err != nil {
+	if err := ch.Store.KVStore.Set(requestLines[4], requestLines[6], expiration); err != nil {
 		return nil, fmt.Errorf("error while setting in store: %s", err.Error())
 	}
 
@@ -263,7 +257,7 @@ func (ch *Commands) GetHandler(requestLines []string) ([]string, error) {
 		return nil, fmt.Errorf("invalid command received. GET should have more arguments: %s", requestLines)
 	}
 
-	val, err := ch.Store.Get(requestLines[4]);
+	val, err := ch.Store.KVStore.Get(requestLines[4]);
 	if err != nil {
 		return nil, fmt.Errorf("error while getting from store with key: %s %s", requestLines[4], err.Error())
 	}
@@ -271,24 +265,16 @@ func (ch *Commands) GetHandler(requestLines []string) ([]string, error) {
 		return []string{"$-1\r\n"}, nil
 	}
 
-	resp, err := ResponseBuilder(BulkStringsRespType, val.(string))
-	if err != nil {
-		return nil, fmt.Errorf("error creating response: %s", err.Error())
-	}
-	return []string{resp}, nil
+	return []string{ResponseBuilder(BulkStringsRespType, val)}, nil
 }
 
 func (ch *Commands) InfoHandler(requestLines []string) ([]string, error) {
-	resp, err := ResponseBuilder(
+	return []string{ResponseBuilder(
 		BulkStringsRespType,
 		fmt.Sprintf("%s:%s", InfoRole, ch.ServerOpts.Role), 
 		fmt.Sprintf("%s:%s", InfoMasterReplicationID, ch.ServerOpts.MasterReplicationID), 
 		fmt.Sprintf("%s:%v", InfoMasterReplicationOffset, ch.ServerOpts.MasterReplicationOffset),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error creating response: %s", err.Error())
-	}
-	return []string{resp}, nil
+	)}, nil
 }
 
 func (ch *Commands) ReplConfHandler(requestLines []string) ([]string, error) {
@@ -325,7 +311,7 @@ func (ch *Commands) ReplConfHandler(requestLines []string) ([]string, error) {
 }
 
 func (ch *Commands) PsyncHandler() ([]string, error) {
-	rdb, err := ch.Store.ToRDBStore()
+	rdb, err := ch.Store.KVStore.ToRDBStore()
 	if err != nil {
 		return nil, fmt.Errorf("error getting raw rdb store: %s", err.Error())
 	}
@@ -401,10 +387,10 @@ func (ch *Commands) ConfigHandler(requestLines []string) ([]string, error) {
 		case GET:
 			switch Command(strings.ToUpper(requestLines[6])) {
 				case DIR:
-					return []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(ch.Store.Config.Dir), ch.Store.Config.Dir)}, nil
+					return []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(ch.Store.KVStore.Config.Dir), ch.Store.KVStore.Config.Dir)}, nil
 
 				case DB_FILE_NAME:
-					return []string{fmt.Sprintf("*2\r\n$10\r\ndbfilename\r\n$%v\r\n%s\r\n", len(ch.Store.Config.DbFileName), ch.Store.Config.DbFileName)}, nil
+					return []string{fmt.Sprintf("*2\r\n$10\r\ndbfilename\r\n$%v\r\n%s\r\n", len(ch.Store.KVStore.Config.DbFileName), ch.Store.KVStore.Config.DbFileName)}, nil
 				
 				default:
 					fmt.Println("skipping unknown command received with CONFIG GET. request: ", requestLines)
@@ -423,28 +409,20 @@ func (ch *Commands) KeysHandler(requestLines []string) ([]string, error) {
 	switch strings.ToUpper(requestLines[4]) {
 
 		case "*":
-			keySet := ch.Store.GetKeys()
+			keySet := ch.Store.KVStore.GetKeys()
 			if len(keySet) == 0 {
 				return []string{}, nil
 			}
 
-			resp, err := ResponseBuilder(ArraysRespType, keySet...)
-			if err != nil {
-				return nil, fmt.Errorf("error creating response: %s", err.Error())
-			}
-			return []string{resp}, nil
+			return []string{ResponseBuilder(ArraysRespType, keySet...)}, nil
 
 		default:
-			val, err := ch.Store.Get(requestLines[4])
+			val, err := ch.Store.KVStore.Get(requestLines[4])
 			if err != nil {
 				return nil, fmt.Errorf("error getting value for the key: %s. error: %s", requestLines[4], err.Error())
 			}
 
-			resp, err := ResponseBuilder(BulkStringsRespType, val.(string))
-			if err != nil {
-				return nil, fmt.Errorf("error creating response: %s", err.Error())
-			}
-			return []string{resp}, nil
+			return []string{ResponseBuilder(BulkStringsRespType, val)}, nil
 	}
 }
 
@@ -453,22 +431,73 @@ func (ch *Commands) TypeHandler(requestLines []string) ([]string, error) {
 		return nil, fmt.Errorf("invalid command received. TYPE should have more arguments: %s", requestLines)
 	}
 
-	val, err := ch.Store.Get(requestLines[4])
+	arg := requestLines[4]
+
+	val, err := ch.Store.KVStore.Get(arg)
 	if err != nil {
-		return nil, fmt.Errorf("error getting value for the key: %s. error: %s", requestLines[4], err.Error())
+		return nil, fmt.Errorf("error getting value for the key: %s. error: %s", arg, err.Error())
 	}
 	if val == "" {
-		return NoneTypeResponse(), nil
+		val, err := ch.Store.StreamStore.GetStream(arg)
+		if err != nil {
+			return nil, fmt.Errorf("error getting value for the key: %s. error: %s", arg, err.Error())
+		}
+		if val == nil {
+			return NoneTypeResponse(), nil
+		}
+
+		return StreamResponse(), nil
+
 	}
 
-	switch v := val.(type) { 
-	case string:
+	v := reflect.TypeOf(val)
+	switch v.Kind() { 
+	case reflect.String:
         return StringResponse(), nil
+
     default:
         fmt.Printf("unexpected type %T", v)
-    } 
+    }
 
 	return []string{}, nil
+}
+
+func (ch *Commands) XAddHandler(requestLines []string) ([]string, error) {
+	if len(requestLines) < 11 {
+		return nil, fmt.Errorf("invalid command received. XADD should have more arguments: %s", requestLines)
+	}
+
+	streamKey := requestLines[4]
+	entryKey := requestLines[6]
+
+	if entryKey == "0-0" {
+		return []string{ResponseBuilder(ErrorsRespType, "The ID specified in XADD must be greater than 0-0")}, nil
+	}
+
+	i := 8
+	// entries := make([]store.StreamValues, 0)
+	for i < len(requestLines) {
+		key := requestLines[i]
+		value := requestLines[i+2]
+
+		entryValue := store.StreamEntry{
+			Key: key,
+			Value: value,
+		}
+		// entries = append(entries, entryValue)
+		err := ch.Store.StreamStore.Set(streamKey, entryKey, entryValue)
+		if errors.Is(err, store.ErrInvalidEntryID) {
+			return []string{ResponseBuilder(ErrorsRespType, "The ID specified in XADD is equal or smaller than the target stream top item")}, nil
+		} else if err != nil {
+			return []string{}, err
+		}
+
+		i += 4
+	}	
+
+	return []string{ResponseBuilder(BulkStringsRespType, entryKey)}, nil
+
+
 }
 
 func (ch *Commands) RdbFileHandler() ([]string, error) {

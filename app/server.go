@@ -6,7 +6,8 @@ import (
 	"net"
 	"os"
 	"strconv"
-	// "strings"
+
+	"github.com/codecrafters-io/redis-starter-go/store"
 )
 
 type Role string
@@ -33,34 +34,34 @@ const (
 	ReplicaIdLength = 40
 
 	// role constants
-	RoleMaster Role = "master"
-	RoleSlave Role = "slave"
+	RoleMaster 	Role = "master"
+	RoleSlave 	Role = "slave"
 )
 
 type ServerOpts struct {
-	ListnerPort string
-	Role Role
-	MasterReplicationID string
+	ListnerPort 			string
+	Role 					Role
+	MasterReplicationID 	string
 	MasterReplicationOffset int64
 
-	MasterHost string
-	MasterPort string
+	MasterHost 				string
+	MasterPort 				string
 
-	ReplicaOffset int64
+	ReplicaOffset 			int64
 
-	Replicas map[net.Conn]int
+	Replicas 				map[net.Conn]int
 }
 
 type Server struct {
 	ServerOpts
-	listner  net.Listener
-	commands  Commands
+	listner  	net.Listener
+	commands  	Commands
 
-	MasterConn net.Conn
+	MasterConn 	net.Conn
 }
 
 // NewServer() Creates a new Server
-func NewServer(serverOpts ServerOpts, storeOpts StoreOpts) Server {
+func NewServer(serverOpts ServerOpts, storeOpts store.StoreOpts) Server {
 	return Server{
 		ServerOpts: serverOpts,
 		commands: NewCommandsHandler(serverOpts, storeOpts),
@@ -97,8 +98,8 @@ func main() {
 		serverOpts.ReplicaOffset = -1
 	}
 
-	storeOpts := StoreOpts{
-		Config: RDBConfig{
+	storeOpts := store.StoreOpts{
+		Config: store.RDBConfig{
 			Dir: *dirPtr,
 			DbFileName: *dbFileNamePtr,
 		},
@@ -111,7 +112,7 @@ func main() {
 		go server.handleConn(server.MasterConn)
 	}
 
-	server.commands.Store.InitializeDB()
+	server.commands.Store.KVStore.InitializeDB()
 	server.StartServer()
 }
 

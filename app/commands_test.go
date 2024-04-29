@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codecrafters-io/redis-starter-go/store"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,8 +24,8 @@ func createCommandsHandler(role Role) Commands{
 			MasterReplicationID: TEST_REPLICATION_ID,
 			MasterReplicationOffset: 0,
 		},
-		StoreOpts{
-			Config: RDBConfig{
+		store.StoreOpts{
+			Config: store.RDBConfig{
 				Dir: "./",
 				DbFileName: "orange.rdb",
 			},
@@ -135,7 +136,7 @@ func TestParseCommands_Config(t *testing.T) {
 	buf := []byte("*3\r\n$6\r\nCONFIG\r\n$3\r\nget\r\n$3\r\ndir\r\n")
 	val, err := handler.ParseCommands(string(buf))
 	assert.Nil(t, err)
-	assert.Equal(t, []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(handler.Store.Config.Dir), handler.Store.Config.Dir)}, val)
+	assert.Equal(t, []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(handler.Store.KVStore.Config.Dir), handler.Store.KVStore.Config.Dir)}, val)
 }
 
 func TestParseCommands_Type(t *testing.T) {
@@ -154,8 +155,34 @@ func TestParseCommands_Type(t *testing.T) {
 	val, err = handler.ParseCommands(string(buf))
 	assert.Nil(t, err)
 	assert.Equal(t, []string{"+none\r\n"}, val)
+
+	// Set Stream
+	buf = []byte("*5\r\n$4\r\nxadd\r\n$6\r\norange\r\n$3\r\n0-1\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+	handler.ParseCommands(string(buf))
+
+	buf = []byte("*2\r\n$4\r\nTYPE\r\n$6\r\norange\r\n")
+	val, err = handler.ParseCommands(string(buf))
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"+stream\r\n"}, val)
+
 }
 
+func TestParseCommands_XAdd(t *testing.T) {
+	handler := createCommandsHandler(RoleMaster)
+
+	buf := []byte("*5\r\n$4\r\nxadd\r\n$6\r\norange\r\n$3\r\n0-1\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+
+	_, exists := handler.Store.StreamStore.DataStore["orange"]
+	assert.False(t, exists)
+
+	handler.ParseCommands(string(buf))
+
+	val, exists := handler.Store.StreamStore.DataStore["orange"]
+	assert.True(t, exists)
+	assert.Equal(t, "0-1", val[0].ID)
+	assert.Equal(t, "foo", len(val[0].Entry.Key))
+	assert.Equal(t, "bar", len(val[0].Entry.Value))
+}
 
 func TestIsWriteCommand(t *testing.T) {
 	isWrite := IsWriteCommand("*1\r\n$4\r\nping\r\n")
@@ -182,50 +209,52 @@ func TestIsPsyncCommand(t *testing.T) {
 func TestReadFromRDBFile(t *testing.T) {
 	{
 		handler := createCommandsHandler(RoleMaster)
-		handler.Store.Config.DbFileName = "EmptyRDBTest"
+		handler.Store.KVStore.Config.DbFileName = "EmptyRDBTest"
 
-		store := handler.Store.InitializeDB()
-		assert.Equal(t, 0, len(store))
+		handler.Store.KVStore.InitializeDB()
+		assert.Equal(t, 0, len(handler.Store.KVStore.DataStore))
 	}
 
 	{
 		handler := createCommandsHandler(RoleMaster)
-		handler.Store.Config.DbFileName = "RDBTest"
+		handler.Store.KVStore.Config.DbFileName = "RDBTest"
 
-		store := handler.Store.InitializeDB()
-		assert.Equal(t, 1, len(store))
+		handler.Store.KVStore.InitializeDB()
+		assert.Equal(t, 1, len(handler.Store.KVStore.DataStore))
 	}
 }
 
 func TestResponseBuilder(t *testing.T) {
 	{
-		val, err := ResponseBuilder(SimpleStringsRespType, "FULLRESYNC 0 xxxxx")
-		assert.Nil(t, err)
+		val := ResponseBuilder(SimpleStringsRespType, "FULLRESYNC 0 xxxxx")
 		assert.Equal(t, "+FULLRESYNC 0 xxxxx\r\n", val)
 
-		val, err = ResponseBuilder(SimpleStringsRespType, "FULLRESYNC 0 xxxxx", "testing")
-		assert.NotNil(t, err)
+		val = ResponseBuilder(SimpleStringsRespType, "FULLRESYNC 0 xxxxx", "testing")
 		assert.Equal(t, "", val)
 	}
 
 	{
-		val, err := ResponseBuilder(BulkStringsRespType, "pear")
-		assert.Nil(t, err)
+		val := ResponseBuilder(BulkStringsRespType, "pear")
 		assert.Equal(t, "$4\r\npear\r\n", val)
 
-		val, err = ResponseBuilder(BulkStringsRespType, "pear", "banana")
-		assert.Nil(t, err)
+		val = ResponseBuilder(BulkStringsRespType, "pear", "banana")
 		assert.Equal(t, "$11\r\npear\nbanana\r\n", val)
 	}
 
 	{
-		val, err := ResponseBuilder(ArraysRespType, "pear")
-		assert.Nil(t, err)
+		val := ResponseBuilder(ArraysRespType, "pear")
 		assert.Equal(t, "*1\r\n$4\r\npear\r\n", val)
 
-		val, err = ResponseBuilder(ArraysRespType, "pear", "banana")
-		assert.Nil(t, err)
+		val = ResponseBuilder(ArraysRespType, "pear", "banana")
 		assert.Equal(t, "*2\r\n$4\r\npear\r\n$6\r\nbanana\r\n", val)
+	}
+
+	{
+		val := ResponseBuilder(ErrorsRespType, "pear")
+		assert.Equal(t, "-ERR pear\r\n", val)
+
+		val = ResponseBuilder(ErrorsRespType, "pear", "banana")
+		assert.Equal(t, "", val)
 	}
 }
 

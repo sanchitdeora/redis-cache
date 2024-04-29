@@ -1,4 +1,4 @@
-package main
+package store
 
 import (
 	"bufio"
@@ -9,31 +9,6 @@ import (
 	"os"
 	"time"
 )
-
-type ValueStore struct {
-	Value      string
-	Expiration int64
-}
-
-type KVDataStore map[string]*ValueStore
-
-type RDBConfig struct {
-	Dir string
-	DbFileName string
-}
-
-type StoreOpts struct {
-	Config RDBConfig
-}
-
-type Store struct {
-	StoreOpts
-	kvDataStore KVDataStore
-}
-
-func NewStore(opts StoreOpts) Store {
-	return Store{StoreOpts: opts, kvDataStore: make(KVDataStore)}
-}
 
 type OpCode byte
 
@@ -50,57 +25,57 @@ const (
 
 )
 
-func (s *Store) Set(key string, val string, expDur int64) error {
+func (kv *KVStoreImpl) Set(key string, val string, expDur int64) error {
 	var expiration int64 = -1 
 
 	if expDur > 0 {
 		expiration = time.Now().UnixMilli() + expDur
 	}
 
-	value := &ValueStore{
+	value := &Values{
 		Value:      val,
 		Expiration: expiration,
 	}
 
-	s.kvDataStore[key] = value
+	kv.DataStore[key] = value
 
 	return nil
 }
 
-func (s *Store) Get(key string) (interface{}, error) {
-	val, exists := s.kvDataStore[key]; if !exists {
+func (kv *KVStoreImpl) Get(key string) (string, error) {
+	val, exists := kv.DataStore[key]; if !exists {
 		return "", nil
 	}
 
 	if val.Expiration > 0 && time.Now().UnixMilli() > val.Expiration {
 		// if value is expired, delete from store
-		delete(s.kvDataStore, key)
+		delete(kv.DataStore, key)
 		return "", nil
 	}
 
 	return val.Value, nil
 }
 
-func (s *Store) GetKeys() []string {
-	keys := make([]string, 0, len(s.kvDataStore))
+func (kv *KVStoreImpl) GetKeys() []string {
+	keys := make([]string, 0, len(kv.DataStore))
 
-	for k := range s.kvDataStore {
+	for k := range kv.DataStore {
 		keys = append(keys, k)
 	}
 
 	return keys
 }
 
-func (s *Store) ToRDBStore() ([]byte, error) {
+func (kv *KVStoreImpl) ToRDBStore() ([]byte, error) {
 	return base64.StdEncoding.DecodeString(RdbEmptyFileBase64)
 }
 
-func (s *Store) InitializeDB() KVDataStore {
-	fmt.Println("Initializing DB", s.Config)
-	
-	file, err := os.Open(fmt.Sprintf("%s/%s", s.Config.Dir, s.Config.DbFileName))
+func (kv *KVStoreImpl) InitializeDB() {
+	fmt.Println("Initializing DB", kv.Config)
+
+	file, err := os.Open(fmt.Sprintf("%s/%s", kv.Config.Dir, kv.Config.DbFileName))
 	if err != nil {
-		return make(KVDataStore)
+		kv.DataStore = make(KVDataStore)
 	}
 	reader := bufio.NewReader(file)
 
@@ -108,10 +83,10 @@ func (s *Store) InitializeDB() KVDataStore {
 	reader.ReadBytes(0xFE)
 	reader.UnreadByte()
 
-	return s.ParseRdbFile(reader)
+	kv.DataStore = kv.ParseRdbFile(reader)
 }
 
-func (s *Store) ParseRdbFile(reader *bufio.Reader) KVDataStore {
+func (kv *KVStoreImpl) ParseRdbFile(reader *bufio.Reader) KVDataStore {
 	main:
 		for {
 			opCode, err := reader.ReadByte()
@@ -120,7 +95,7 @@ func (s *Store) ParseRdbFile(reader *bufio.Reader) KVDataStore {
 					fmt.Println("EOF???")
 					break
 				}
-				panic(err)
+				return make(KVDataStore)
 			}
 
 			// getStringVal(reader)
@@ -129,19 +104,19 @@ func (s *Store) ParseRdbFile(reader *bufio.Reader) KVDataStore {
 				case 0xFF: // EOF
 					break main
 				case 0xFE:
-					BufJump(reader, 2)
-					s.LengthParser(reader)
-					s.LengthParser(reader)
+					bufJump(reader, 2)
+					lengthParser(reader)
+					lengthParser(reader)
 					continue
 			}
 
 			expiry := int64(-1)
 			valueType := opCode
 			if opCode == 0xFD {
-				expiry = int64(binary.LittleEndian.Uint32(s.ReadBytes(reader, 4))) * 1000
+				expiry = int64(binary.LittleEndian.Uint32(readBytes(reader, 4))) * 1000
 				valueType, _ = reader.ReadByte()
 			} else if opCode == 0xFC {
-				expiry = int64(binary.LittleEndian.Uint32(s.ReadBytes(reader, 8))) * 1000
+				expiry = int64(binary.LittleEndian.Uint32(readBytes(reader, 8))) * 1000
 				valueType, _ = reader.ReadByte()
 			}
 
@@ -150,37 +125,37 @@ func (s *Store) ParseRdbFile(reader *bufio.Reader) KVDataStore {
 				continue
 			}
 
-			keyLength := s.LengthParser(reader)
+			keyLength := lengthParser(reader)
 			key := make([]byte, keyLength)
 			reader.Read(key)
 			
-			valueLength := s.LengthParser(reader)
+			valueLength := lengthParser(reader)
 			value := make([]byte, valueLength)
 			reader.Read(value)
 			
 			fmt.Printf("RedisRDB.Load: Key: %s, Value: %s, expiry: %d\n", string(key), string(value), expiry)
-			s.kvDataStore[string(key)] = &ValueStore{
+			kv.DataStore[string(key)] = &Values{
 				Value:  string(value),
 				Expiration: expiry,
 			}
-		}
+		}		
 
-	return s.kvDataStore
+	return kv.DataStore
 }
 
-func BufJump(buf *bufio.Reader, x int) error {
+func bufJump(buf *bufio.Reader, x int) error {
 	a := make([]byte, x)
 	_, err := buf.Read(a)
 	return err
 }
 
-func (s *Store) ReadBytes(reader *bufio.Reader, x int) []byte {
+func readBytes(reader *bufio.Reader, x int) []byte {
 	buf := make([]byte, x)
 	reader.Read(buf)
 	return buf
 }
 
-func (s *Store) LengthParser(reader *bufio.Reader) int {
+func lengthParser(reader *bufio.Reader) int {
 	lenByte, _ := reader.ReadByte()
 	switch lenByte >> 6 {
 	case 0b00:
@@ -211,6 +186,6 @@ func (s *Store) LengthParser(reader *bufio.Reader) int {
 	return -1
 }
 
-func (s *Store) EmptyRedisFile() []byte {
+func (kv *KVStoreImpl) EmptyRedisFile() []byte {
 	return []byte("UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog==")
 }

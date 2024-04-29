@@ -27,6 +27,7 @@ const (
 	ArraysRespType RESPType = "Arrays"
 	NullsRespType RESPType = "Nulls"
 	IntegersRespType RESPType = "Integers"
+	ErrorsRespType RESPType = "Errors"
 )
 
 // Responses
@@ -47,35 +48,48 @@ func StringResponse() []string {
 	return []string{"+string\r\n"}
 }
 
+func StreamResponse() []string {
+	return []string{"+stream\r\n"}
+}
 
-func ResponseBuilder(respType RESPType, args ...string) (string, error) {
+
+func ResponseBuilder(respType RESPType, args ...string) string {
 	switch respType {
 		case SimpleStringsRespType:
 			if len(args) > 1 {
-				return "", fmt.Errorf("invalid response. simple strings cannot have more than one string")
+				fmt.Println("invalid response. simple strings cannot have more than one string")
+				return "" 
 			}
-			return fmt.Sprintf("%s%s%s", SimpleStringsFirstChar, args[0], CLRF), nil
+			return fmt.Sprintf("%s%s%s", SimpleStringsFirstChar, args[0], CLRF)
 
 		case BulkStringsRespType:
 			res := args[0]
 			if len(args) > 1 {
 				res = strings.Join(args, "\n")
 			}
-			return fmt.Sprintf("%s%v%s%s%s", BulkStringsFirstChar, len(res), CLRF, res, CLRF), nil
+			return fmt.Sprintf("%s%v%s%s%s", BulkStringsFirstChar, len(res), CLRF, res, CLRF)
 		
 		case ArraysRespType:
 			if len(args) == 0 {
-				return "", fmt.Errorf("invalid response. arrays cannot have zero arguments")
+				fmt.Println("invalid response. arrays cannot have zero arguments")
+				return ""
 			}
 
 			resp := fmt.Sprintf("%s%v%s", ArraysFirstChar, len(args), CLRF)
 			for _, arg := range args {
 				resp += fmt.Sprintf("%s%v%s%s%s", BulkStringsFirstChar, len(arg), CLRF, arg, CLRF)
 			}
-			return resp, nil
-		}
+			return resp
+			
+		case ErrorsRespType:
+			if len(args) > 1 {
+				fmt.Println("invalid response. error strings cannot have more than one string")
+				return "" 
+			}
+			return fmt.Sprintf("%sERR %s%s", NullsFirstChar, args[0], CLRF)
+	}
 
-	return "", nil
+	return ""
 }
 
 func ParseRequest(req string) (cReqs []string, err error) {
