@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	// "reflect"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type Command string
+type KeyType string
 
 var numReplicasAck int
 var numReplicasWait int
@@ -35,6 +37,14 @@ const (
 	DIR Command = "DIR"
 	DB_FILE_NAME Command = "DBFILENAME"
 	KEYS Command = "KEYS"
+
+	// Streams
+	TYPE Command = "TYPE"
+
+
+	// Set Key Types
+	stringType KeyType = "string"
+	noneType KeyType = "none"
 
 	// info response constants
 	InfoRole = "role"
@@ -167,6 +177,9 @@ func (ch *Commands) CommandsHandler(requestLines []string) (resp []string, err e
 		case KEYS:
 			resp, err = ch.KeysHandler(requestLines)
 
+		case TYPE:
+			resp, err = ch.TypeHandler(requestLines)
+
 		default:
 			return NullResponse(), fmt.Errorf("invalid command received: %s", command)
 	}
@@ -258,7 +271,7 @@ func (ch *Commands) GetHandler(requestLines []string) ([]string, error) {
 		return []string{"$-1\r\n"}, nil
 	}
 
-	resp, err := ResponseBuilder(BulkStringsRespType, val)
+	resp, err := ResponseBuilder(BulkStringsRespType, val.(string))
 	if err != nil {
 		return nil, fmt.Errorf("error creating response: %s", err.Error())
 	}
@@ -424,15 +437,38 @@ func (ch *Commands) KeysHandler(requestLines []string) ([]string, error) {
 		default:
 			val, err := ch.Store.Get(requestLines[4])
 			if err != nil {
-				return nil, fmt.Errorf("error getting value for the key: %s. error:", requestLines[4], err.Error())
+				return nil, fmt.Errorf("error getting value for the key: %s. error: %s", requestLines[4], err.Error())
 			}
 
-			resp, err := ResponseBuilder(BulkStringsRespType, val)
+			resp, err := ResponseBuilder(BulkStringsRespType, val.(string))
 			if err != nil {
 				return nil, fmt.Errorf("error creating response: %s", err.Error())
 			}
 			return []string{resp}, nil
 	}
+}
+
+func (ch *Commands) TypeHandler(requestLines []string) ([]string, error) {
+	if len(requestLines) < 5 {
+		return nil, fmt.Errorf("invalid command received. TYPE should have more arguments: %s", requestLines)
+	}
+
+	val, err := ch.Store.Get(requestLines[4])
+	if err != nil {
+		return nil, fmt.Errorf("error getting value for the key: %s. error: %s", requestLines[4], err.Error())
+	}
+	if val == "" {
+		return NoneTypeResponse(), nil
+	}
+
+	switch v := val.(type) { 
+	case string:
+        return StringResponse(), nil
+    default:
+        fmt.Printf("unexpected type %T", v)
+    } 
+
+	return []string{}, nil
 }
 
 func (ch *Commands) RdbFileHandler() ([]string, error) {

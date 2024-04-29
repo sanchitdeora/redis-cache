@@ -39,6 +39,14 @@ func NullResponse() []string {
 	return []string{"-1\r\n"}
 }
 
+func NoneTypeResponse() []string {
+	return []string{"+none\r\n"}
+}
+
+func StringResponse() []string {
+	return []string{"+string\r\n"}
+}
+
 
 func ResponseBuilder(respType RESPType, args ...string) (string, error) {
 	switch respType {

@@ -129,7 +129,7 @@ func TestParseCommands_PSync(t *testing.T) {
 	}, val)
 }
 
-func TestConfigHandler(t *testing.T) {
+func TestParseCommands_Config(t *testing.T) {
 	handler := createCommandsHandler(RoleMaster)
 
 	buf := []byte("*3\r\n$6\r\nCONFIG\r\n$3\r\nget\r\n$3\r\ndir\r\n")
@@ -138,45 +138,24 @@ func TestConfigHandler(t *testing.T) {
 	assert.Equal(t, []string{fmt.Sprintf("*2\r\n$3\r\ndir\r\n$%v\r\n%s\r\n", len(handler.Store.Config.Dir), handler.Store.Config.Dir)}, val)
 }
 
+func TestParseCommands_Type(t *testing.T) {
+	handler := createCommandsHandler(RoleMaster)
 
-// TestParseRequest
+	// set foo bar with 1sec expiration
+	buf := []byte("*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")	
+	handler.ParseCommands(string(buf))
 
-func TestParseRequest(t *testing.T) {
-	req, err := ParseRequest("*1\r\n$4\r\nping\r\n")
+	buf = []byte("*2\r\n$4\r\nTYPE\r\n$5\r\nmango\r\n")
+	val, err := handler.ParseCommands(string(buf))
 	assert.Nil(t, err)
-	assert.Equal(t, []string{"*1\r\n$4\r\nping\r\n"}, req)
+	assert.Equal(t, []string{"+string\r\n"}, val)
 
-	_, err = ParseRequest("1\r\n$4\r\nping\r\n")
-	assert.NotNil(t, err)
-
-	req, err = ParseRequest("*2\r\n$4\r\necho\r\n$11\r\nHello World\r\n")
+	buf = []byte("*2\r\n$4\r\nTYPE\r\n$6\r\norange\r\n")
+	val, err = handler.ParseCommands(string(buf))
 	assert.Nil(t, err)
-	assert.Equal(t, []string{"*2\r\n$4\r\necho\r\n$11\r\nHello World\r\n"}, req)
-
-	req, err = ParseRequest("+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n")
-	assert.Nil(t, err)
-	assert.Equal(t, []string{"+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n"}, req)
-
-	req, err = ParseRequest("$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2")
-	assert.Nil(t, err)
-	assert.Equal(t, []string{"$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2"}, req)
-
-	req, err = ParseRequest("+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n")
-	assert.Nil(t, err)
-	assert.Equal(t, []string{
-		"+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n",
-		"$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2",
-		"*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n",
-	}, req)
-
-	req, err = ParseRequest("*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")
-	assert.Nil(t, err)
-	assert.Equal(t, []string{
-		"*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n",
-		"*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n",
-		"*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n",
-	}, req)
+	assert.Equal(t, []string{"+none\r\n"}, val)
 }
+
 
 func TestIsWriteCommand(t *testing.T) {
 	isWrite := IsWriteCommand("*1\r\n$4\r\nping\r\n")
@@ -248,4 +227,44 @@ func TestResponseBuilder(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, "*2\r\n$4\r\npear\r\n$6\r\nbanana\r\n", val)
 	}
+}
+
+
+// TestParseRequest
+
+func TestParseRequest(t *testing.T) {
+	req, err := ParseRequest("*1\r\n$4\r\nping\r\n")
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"*1\r\n$4\r\nping\r\n"}, req)
+
+	_, err = ParseRequest("1\r\n$4\r\nping\r\n")
+	assert.NotNil(t, err)
+
+	req, err = ParseRequest("*2\r\n$4\r\necho\r\n$11\r\nHello World\r\n")
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"*2\r\n$4\r\necho\r\n$11\r\nHello World\r\n"}, req)
+
+	req, err = ParseRequest("+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n")
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n"}, req)
+
+	req, err = ParseRequest("$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2")
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2"}, req)
+
+	req, err = ParseRequest("+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n")
+	assert.Nil(t, err)
+	assert.Equal(t, []string{
+		"+FULLRESYNC 75cd7bc10c49047e0d163660f3b90625b1af31dc 0\r\n",
+		"$88\r\nREDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2",
+		"*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n",
+	}, req)
+
+	req, err = ParseRequest("*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n")
+	assert.Nil(t, err)
+	assert.Equal(t, []string{
+		"*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n",
+		"*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n",
+		"*5\r\n$3\r\nset\r\n$5\r\nmango\r\n$9\r\nraspberry\r\n$2\r\npx\r\n$3\r\n100\r\n",
+	}, req)
 }

@@ -67,7 +67,7 @@ func (s *Store) Set(key string, val string, expDur int64) error {
 	return nil
 }
 
-func (s *Store) Get(key string) (string, error) {
+func (s *Store) Get(key string) (interface{}, error) {
 	val, exists := s.kvDataStore[key]; if !exists {
 		return "", nil
 	}
@@ -209,10 +209,6 @@ func (s *Store) LengthParser(reader *bufio.Reader) int {
 	}
 	
 	return -1
-}
-
-func getStringVal(r *bufio.Reader) {
-	fmt.Println(r.Peek(r.Size()))
 }
 
 func (s *Store) EmptyRedisFile() []byte {
