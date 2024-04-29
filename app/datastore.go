@@ -132,35 +132,39 @@ func (s *Store) ParseRdbFile(reader *bufio.Reader) KVDataStore {
 					BufJump(reader, 2)
 					s.LengthParser(reader)
 					s.LengthParser(reader)
-				case 0xFD:
-				case 0xFC:
-				default:
-					expiry := int64(-1)
-					valueType := opCode
-					if opCode == 0xFD {
-						expiry = int64(binary.LittleEndian.Uint32(s.ReadBytes(reader, 4)))
-						valueType, _ = reader.ReadByte()
-					} else if opCode == 0xFC {
-						expiry = int64(binary.LittleEndian.Uint32(s.ReadBytes(reader, 8)))
-						valueType, _ = reader.ReadByte()
-					}
-					if valueType != 0x00 {
-						fmt.Printf("RedisRDB.Load: opcode not implemented: 0x%x\n", valueType)
-						continue
-					}
-					keyLength := s.LengthParser(reader)
-					key := make([]byte, keyLength)
-					reader.Read(key)
-					valueLength := s.LengthParser(reader)
-					value := make([]byte, valueLength)
-					reader.Read(value)
-					fmt.Printf("RedisRDB.Load: Key: %s, Value: %s, expiry: %d\n", string(key), string(value), expiry)
-					s.kvDataStore[string(key)] = &ValueStore{
-						Value:  string(value),
-						Expiration: expiry,
-					}
+					continue
+			}
+
+			expiry := int64(-1)
+			valueType := opCode
+			if opCode == 0xFD {
+				expiry = int64(binary.LittleEndian.Uint32(s.ReadBytes(reader, 4))) * 1000
+				valueType, _ = reader.ReadByte()
+			} else if opCode == 0xFC {
+				expiry = int64(binary.LittleEndian.Uint32(s.ReadBytes(reader, 8))) * 1000
+				valueType, _ = reader.ReadByte()
+			}
+
+			if valueType != 0x00 {
+				fmt.Printf("RedisRDB.Load: opcode not implemented: 0x%x\n", valueType)
+				continue
+			}
+
+			keyLength := s.LengthParser(reader)
+			key := make([]byte, keyLength)
+			reader.Read(key)
+			
+			valueLength := s.LengthParser(reader)
+			value := make([]byte, valueLength)
+			reader.Read(value)
+			
+			fmt.Printf("RedisRDB.Load: Key: %s, Value: %s, expiry: %d\n", string(key), string(value), expiry)
+			s.kvDataStore[string(key)] = &ValueStore{
+				Value:  string(value),
+				Expiration: expiry,
 			}
 		}
+
 	return s.kvDataStore
 }
 
