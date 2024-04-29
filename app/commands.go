@@ -422,7 +422,16 @@ func (ch *Commands) KeysHandler(requestLines []string) ([]string, error) {
 			return []string{resp}, nil
 
 		default:
-			return []string{}, nil
+			val, err := ch.Store.Get(requestLines[4])
+			if err != nil {
+				return nil, fmt.Errorf("error getting value for the key: %s. error:", requestLines[4], err.Error())
+			}
+
+			resp, err := ResponseBuilder(BulkStringsRespType, val)
+			if err != nil {
+				return nil, fmt.Errorf("error creating response: %s", err.Error())
+			}
+			return []string{resp}, nil
 	}
 }
 
