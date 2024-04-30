@@ -182,7 +182,7 @@ func lengthParser(reader *bufio.Reader) int {
 			return int(binary.LittleEndian.Uint32(buf))
 		}
 	}
-	
+
 	return -1
 }
 

@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var ErrInvalidEntryID = errors.New("entry ID is invalid")
@@ -13,7 +14,7 @@ var ErrInvalidEntryID = errors.New("entry ID is invalid")
 func (s *StreamDataStoreImpl) Set(streamKey string, entryID string, entry StreamEntry) error {
 	val, exists := s.DataStore[streamKey]; if exists {
 		prevEntry := val[len(val)-1]
-		err := ValidateEntryID(prevEntry.ID, entryID)
+		err := validateEntryID(prevEntry.ID, entryID)
 		if err != nil {
 			return err
 		}
@@ -29,13 +30,13 @@ func (s *StreamDataStoreImpl) Set(streamKey string, entryID string, entry Stream
 }
 
 func (s *StreamDataStoreImpl) SetEntry(streamKey string, entryID string, entry StreamEntry) (string, error) {
-	
+
 	var prevEntryID string
 	val, exists := s.DataStore[streamKey]; if exists {
 		prevEntryID = val[len(val)-1].ID
 	}
 
-	updatedEntryID, err := GetEntryID(prevEntryID, entryID)
+	updatedEntryID, err := getUpdatedEntryID(prevEntryID, entryID)
 	if err != nil {
 		return "", err
 	}
@@ -99,30 +100,34 @@ func (s *StreamDataStoreImpl) GetEntry(streamKey string, entryID string) (Stream
 // 	return keys
 // }
 
-func GetEntryID(prevEntryID, entryID string) (string, error) {
-	err := ValidateEntryID(prevEntryID, entryID)
+func getUpdatedEntryID(prevEntryID, entryID string) (string, error) {
+	err := validateEntryID(prevEntryID, entryID)
 	if err != nil {
 		return "", err
 	}
 
-	currTs, currSeq := ParseEntryID(entryID)
+	currTs, currSeq := parseEntryID(entryID)
+	if currTs == math.MaxInt {
+		return fmt.Sprintf("%v-0", time.Now().UnixMilli()), nil
+	}
+	
 	if currTs == 0 && currSeq == math.MaxInt {
-		return fmt.Sprintf("%v-%v", currTs, 1), nil
+		return fmt.Sprintf("%v-1", currTs), nil
 	}
 
 	if prevEntryID == "" {
 		if currSeq == math.MaxInt{
-			return fmt.Sprintf("%v-%v", currTs, 0), nil
+			return fmt.Sprintf("%v-0", currTs), nil
 		}
 	} else {
-		prevTs, prevSeq := ParseEntryID(prevEntryID)
+		prevTs, prevSeq := parseEntryID(prevEntryID)
 		
 		if currTs == prevTs && currSeq == math.MaxInt {
 			return fmt.Sprintf("%v-%v", currTs, prevSeq + 1), nil
 		}
 
 		if currTs > prevTs && currSeq == math.MaxInt {
-			return fmt.Sprintf("%v-%v", currTs, 0), nil
+			return fmt.Sprintf("%v-0", currTs), nil
 		}
 
 	}
@@ -130,7 +135,7 @@ func GetEntryID(prevEntryID, entryID string) (string, error) {
 	return entryID, nil
 }
 
-func ParseEntryID(entryID string) (int, int) {
+func parseEntryID(entryID string) (int, int) {
 	if entryID == "*" {
 		return math.MaxInt, math.MaxInt
 	}
@@ -145,7 +150,7 @@ func ParseEntryID(entryID string) (int, int) {
 	return timestamp, sequenceNum
 }
 
-func ValidateEntryID(prevEntryID, entryID string) error {
+func validateEntryID(prevEntryID, entryID string) error {
 	if prevEntryID == "" {
 		return nil
 	}
@@ -154,8 +159,8 @@ func ValidateEntryID(prevEntryID, entryID string) error {
 		return ErrInvalidEntryID
 	}
 
-	prevTs, prevSeq := ParseEntryID(prevEntryID)
-	currTs, currSeq := ParseEntryID(entryID)
+	prevTs, prevSeq := parseEntryID(prevEntryID)
+	currTs, currSeq := parseEntryID(entryID)
 
 	if prevTs > currTs || (prevTs == currTs && prevSeq > currSeq ) {
 		return ErrInvalidEntryID
