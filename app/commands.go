@@ -275,7 +275,7 @@ func (ch *Commands) GetHandler(requestLines []string) ([]string, error) {
 		return nil, fmt.Errorf("error while getting from store with key: %s %s", requestLines[4], err.Error())
 	}
 	if val == "" {
-		return []string{"$-1\r\n"}, nil
+		return NullResponse(), nil
 	}
 
 	return []string{ResponseBuilder(BulkStringsRespType, val)}, nil
@@ -553,9 +553,11 @@ func (ch *Commands) XReadHandler(requestLines []string) ([]string, error) {
 		indexJ += 4
 		blockTimeout, err := strconv.Atoi(requestLines[6])
 		if err != nil {
-			return ch.internalXReadHandler(requestLines[indexJ:])
+			return ch.internalXReadHandler(ch.GetXReadStreamsAndArrays(requestLines[indexJ:], false))
 		}
-		go ch.XReadWithBlock(blockTimeout, requestLines[indexJ:])
+		
+		streamKeys, entryIDs := ch.GetXReadStreamsAndArrays(requestLines[indexJ:], true)
+		go ch.XReadWithBlock(blockTimeout, streamKeys, entryIDs)
 
 		for {
 			select {
@@ -568,17 +570,17 @@ func (ch *Commands) XReadHandler(requestLines []string) ([]string, error) {
 		}
 
 	} else {
-		return ch.internalXReadHandler(requestLines[indexJ:])
+		return ch.internalXReadHandler(ch.GetXReadStreamsAndArrays(requestLines[indexJ:], false))
 	}
 
 	// return []string{"should not be here"}, nil
 }
 
-func (ch *Commands) XReadWithBlock(timeout int, request []string) {
+func (ch *Commands) XReadWithBlock(timeout int, streamKeys, entryIDs []string) {
 	if timeout > 0 {
 		time.Sleep(time.Duration(timeout) * time.Millisecond)
 
-		response, err := ch.internalXReadHandler(request)
+		response, err := ch.internalXReadHandler(streamKeys, entryIDs)
 		if err != nil {
 			xreadBlockChan <- NullResponse()[0]
 		} else {
@@ -586,7 +588,7 @@ func (ch *Commands) XReadWithBlock(timeout int, request []string) {
 		}
 	} else {
 		for {
-			result, _ := ch.internalXReadHandler(request)
+			result, _ := ch.internalXReadHandler(streamKeys, entryIDs)
 			if result != nil && result[0] != NullResponse()[0] {
 				xreadBlockChan <- result[0]
 				break
@@ -597,24 +599,10 @@ func (ch *Commands) XReadWithBlock(timeout int, request []string) {
 
 }
 
-func (ch *Commands) internalXReadHandler(request []string) ([]string, error) {
-
-	indexJ := 0
-	xreadStreamCount := len(request[indexJ:]) / 4
-
-	var streamKeys, entryIDs []string
-	for i := 0; i < xreadStreamCount; i++ {
-		streamKeys = append(streamKeys, request[indexJ + 1])
-		indexJ += 2
-	}
-
-	for i := 0; i < xreadStreamCount; i++ {
-		entryIDs = append(entryIDs, request[indexJ + 1])
-		indexJ += 2
-	}
+func (ch *Commands) internalXReadHandler(streamKeys []string, entryIDs []string) ([]string, error) {
 
 	readStreams := make(map[string][]store.StreamValues)
-	for i := 0; i < xreadStreamCount; i++ {
+	for i := 0; i < len(streamKeys); i++ {
 		readStreams[streamKeys[i]] = ch.Store.StreamStore.ReadEntry(streamKeys[i], entryIDs[i])
 	}
 
@@ -645,6 +633,31 @@ func (ch *Commands) internalXReadHandler(request []string) ([]string, error) {
 	}
 
 	return []string{resp}, nil
+}
+
+func (ch *Commands) GetXReadStreamsAndArrays(request []string, isBlock  bool) (streamKeys []string, entryIDs []string) {
+
+	indexJ := 0
+	xreadStreamCount := len(request[indexJ:]) / 4
+
+	for i := 0; i < xreadStreamCount; i++ {
+		streamKeys = append(streamKeys, request[indexJ + 1])
+		indexJ += 2
+	}
+
+	if isBlock && request[len(request)-1] == "$" {
+		entryIDs = make([]string, 0)
+		for i := 0; i < xreadStreamCount; i++ {
+			entryIDs = append(entryIDs, ch.Store.StreamStore.GetTopItemEntryID(streamKeys[i]))
+		}
+	} else {
+		for i := 0; i < xreadStreamCount; i++ {
+			entryIDs = append(entryIDs, request[indexJ + 1])
+			indexJ += 2
+		}
+	}
+
+	return streamKeys, entryIDs
 }
 
 func (ch *Commands) RdbFileHandler() ([]string, error) {

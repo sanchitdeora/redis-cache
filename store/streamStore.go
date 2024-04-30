@@ -161,8 +161,18 @@ func (s *StreamDataStoreImpl) ReadEntry(streamKey string, startEntryID string) [
 	}
 
 	return resp
-
 }
+
+func (s *StreamDataStoreImpl) GetTopItemEntryID(streamKey string) string {
+	values, exists := s.DataStore[streamKey]
+	if !exists {
+		fmt.Println("stream does not exist")
+		return "0-1"
+	}
+
+	return values[len(values) - 1].ID
+}
+
 
 // func (s *StreamDataStoreImpl) GetKeys() []string {
 // 	keys := make([]string, 0, len(s.DataStore))

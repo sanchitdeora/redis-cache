@@ -37,7 +37,7 @@ func OKResponse() []string {
 }
 
 func NullResponse() []string {
-	return []string{"-1\r\n"}
+	return []string{"$-1\r\n"}
 }
 
 func NoneTypeResponse() []string {
@@ -51,7 +51,6 @@ func StringResponse() []string {
 func StreamResponse() []string {
 	return []string{"+stream\r\n"}
 }
-
 
 func ResponseBuilder(respType RESPType, args ...string) string {
 	switch respType {
