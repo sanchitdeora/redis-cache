@@ -44,6 +44,7 @@ const (
 	// Streams
 	TYPE Command = "TYPE"
 	XADD Command = "XADD"
+	XRANGE Command = "XRANGE"
 
 	// info response constants
 	InfoRole = "role"
@@ -182,6 +183,10 @@ func (ch *Commands) CommandsHandler(requestLines []string) (resp []string, err e
 
 		case XADD:
 			resp, err = ch.XAddHandler(requestLines)
+
+		case XRANGE:
+			resp, err = ch.XRangeHandler(requestLines)
+
 
 		default:
 			return NullResponse(), fmt.Errorf("invalid command received: %s", command)
@@ -475,7 +480,7 @@ func (ch *Commands) XAddHandler(requestLines []string) ([]string, error) {
 	}
 
 	i := 8
-	// entries := make([]store.StreamValues, 0)
+	entries := make([]store.StreamEntry, 0)
 	for i < len(requestLines) {
 		key := requestLines[i]
 		value := requestLines[i+2]
@@ -484,23 +489,50 @@ func (ch *Commands) XAddHandler(requestLines []string) ([]string, error) {
 			Key: key,
 			Value: value,
 		}
-		// entries = append(entries, entryValue)
-		updatedEntryId, err := ch.Store.StreamStore.SetEntry(streamKey, entryID, entryValue)
-		if errors.Is(err, store.ErrInvalidEntryID) {
-			return []string{ResponseBuilder(ErrorsRespType, "The ID specified in XADD is equal or smaller than the target stream top item")}, nil
-		} else if err != nil {
-			return []string{}, err
-		}
-
-		if updatedEntryId != "" {
-			entryID = updatedEntryId
-		}
+		entries = append(entries, entryValue)
 		i += 4
 	}
 
+	updatedEntryId, err := ch.Store.StreamStore.SetEntry(streamKey, entryID, entries)
+	if errors.Is(err, store.ErrInvalidEntryID) {
+		return []string{ResponseBuilder(ErrorsRespType, "The ID specified in XADD is equal or smaller than the target stream top item")}, nil
+	} else if err != nil {
+		return []string{}, err
+	}
+
+	if updatedEntryId != "" {
+		entryID = updatedEntryId
+	}
+
 	return []string{ResponseBuilder(BulkStringsRespType, entryID)}, nil
+}
 
+func (ch *Commands) XRangeHandler(requestLines []string) ([]string, error) {
+	if len(requestLines) < 9 {
+		return nil, fmt.Errorf("invalid command received. XRANGE should have more arguments: %s", requestLines)
+	}
 
+	streamValues := ch.Store.StreamStore.GetEntryRange(requestLines[4], requestLines[6], requestLines[8])
+	if len(streamValues) == 0 {
+		return []string{}, fmt.Errorf("stream values not found")
+	}
+
+	var resp string
+
+	resp = fmt.Sprintf("*%v\r\n", len(streamValues))
+	for _, val := range streamValues {
+		resp += "*2\r\n"
+		resp += ResponseBuilder(BulkStringsRespType, val.ID)
+
+		innerResp := make([]string, 0)
+		for _, entry := range val.Entry {
+			innerResp = append(innerResp, entry.Key, entry.Value)
+		}
+
+		resp += ResponseBuilder(ArraysRespType, innerResp...)
+	}
+
+	return []string{resp}, nil
 }
 
 func (ch *Commands) RdbFileHandler() ([]string, error) {

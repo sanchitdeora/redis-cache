@@ -80,7 +80,7 @@ func ResponseBuilder(respType RESPType, args ...string) string {
 				resp += fmt.Sprintf("%s%v%s%s%s", BulkStringsFirstChar, len(arg), CLRF, arg, CLRF)
 			}
 			return resp
-			
+
 		case ErrorsRespType:
 			if len(args) > 1 {
 				fmt.Println("invalid response. error strings cannot have more than one string")

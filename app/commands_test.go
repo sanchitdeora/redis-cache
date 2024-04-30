@@ -183,8 +183,8 @@ func TestParseCommands_XAdd(t *testing.T) {
 		streamVal, exists := handler.Store.StreamStore.DataStore["orange"]
 		assert.True(t, exists)
 		assert.Equal(t, "0-1", streamVal[0].ID)
-		assert.Equal(t, "foo", streamVal[0].Entry.Key)
-		assert.Equal(t, "bar", streamVal[0].Entry.Value)
+		assert.Equal(t, "foo", streamVal[0].Entry[0].Key)
+		assert.Equal(t, "bar", streamVal[0].Entry[0].Value)
 	}
 
 	{
@@ -200,8 +200,8 @@ func TestParseCommands_XAdd(t *testing.T) {
 		streamVal, exists := handler.Store.StreamStore.DataStore["strawberry"]
 		assert.True(t, exists)
 		assert.Equal(t, "0-1", streamVal[0].ID)
-		assert.Equal(t, "foo", streamVal[0].Entry.Key)
-		assert.Equal(t, "bar", streamVal[0].Entry.Value)
+		assert.Equal(t, "foo", streamVal[0].Entry[0].Key)
+		assert.Equal(t, "bar", streamVal[0].Entry[0].Value)
 	}
 
 	{
@@ -214,8 +214,29 @@ func TestParseCommands_XAdd(t *testing.T) {
 		streamVal, exists := handler.Store.StreamStore.DataStore["strawberry"]
 		assert.True(t, exists)
 		assert.Equal(t, "1-0", streamVal[1].ID)
-		assert.Equal(t, "foo", streamVal[1].Entry.Key)
-		assert.Equal(t, "bar", streamVal[1].Entry.Value)
+		assert.Equal(t, "foo", streamVal[0].Entry[0].Key)
+		assert.Equal(t, "bar", streamVal[0].Entry[0].Value)
+	}
+
+}
+
+func TestParseCommands_XRange(t *testing.T) {
+	handler := createCommandsHandler(RoleMaster)
+
+	{
+		buf := []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n1-1\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+		handler.ParseCommands(string(buf))
+
+		buf = []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n1-2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+		handler.ParseCommands(string(buf))
+
+		buf = []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n1-3\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+		handler.ParseCommands(string(buf))
+		
+		buf = []byte("*4\r\n$6\r\nxrange\r\n$10\r\nstrawberry\r\n$1\r\n1\r\n$3\r\n1-2\r\n")	
+		val, err := handler.ParseCommands(string(buf))
+		assert.Nil(t, err)
+		assert.Equal(t, []string{"*2\r\n*2\r\n$3\r\n1-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n1-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
 	}
 
 }

@@ -11,7 +11,8 @@ import (
 
 var ErrInvalidEntryID = errors.New("entry ID is invalid")
 
-func (s *StreamDataStoreImpl) Set(streamKey string, entryID string, entry StreamEntry) error {
+func (s *StreamDataStoreImpl) Set(streamKey string, entryID string, entry []StreamEntry) error {
+
 	val, exists := s.DataStore[streamKey]; if exists {
 		prevEntry := val[len(val)-1]
 		err := validateEntryID(prevEntry.ID, entryID)
@@ -29,7 +30,7 @@ func (s *StreamDataStoreImpl) Set(streamKey string, entryID string, entry Stream
 	return nil
 }
 
-func (s *StreamDataStoreImpl) SetEntry(streamKey string, entryID string, entry StreamEntry) (string, error) {
+func (s *StreamDataStoreImpl) SetEntry(streamKey string, entryID string, entry []StreamEntry) (string, error) {
 
 	var prevEntryID string
 	val, exists := s.DataStore[streamKey]; if exists {
@@ -72,22 +73,54 @@ func (s *StreamDataStoreImpl) GetStream(streamKey string) ([]StreamValues, error
 	return val, nil
 }
 
-func (s *StreamDataStoreImpl) GetEntry(streamKey string, entryID string) (StreamEntry, error) {
+func (s *StreamDataStoreImpl) GetEntry(streamKey string, entryID string) []StreamEntry {
 	val, exists := s.DataStore[streamKey]; if !exists {
-		return StreamEntry{}, nil
+		return nil
 	}
 
 	if len(val) > 0 {
 		for _, entry := range val {
 			if entry.ID == entryID {
-				return entry.Entry, nil
+				return entry.Entry
 			}
 		}
 	} else {
-		return StreamEntry{}, nil
+		return nil
 	}
 
-	return StreamEntry{}, nil
+	return nil
+}
+
+func (s *StreamDataStoreImpl) GetEntryRange(streamKey string, startEntryID string, endEntryID string) ([]StreamValues) {
+	err := validateEntryID(startEntryID, endEntryID)
+	if err != nil {
+		return nil
+	}
+
+	streamValues, exists := s.DataStore[streamKey]; if !exists {
+		return nil
+	}
+
+	resp := make([]StreamValues, 0)
+
+	startTs, startSeq := parseEntryID(startEntryID)
+	endTs, endSeq := parseEntryID(endEntryID)
+
+	for _, val := range streamValues {
+		currTs, currSeq := parseEntryID(val.ID)
+
+		if (startTs <= currTs && currTs <= endTs) {
+			if startTs == endTs && startSeq <= currSeq && currSeq <= endSeq {
+				resp = append(resp, val)
+			} else if startTs != endTs && startTs == currTs && startSeq <= currTs {
+				resp = append(resp, val)
+			} else if startTs != endTs && currTs == endTs && currSeq <= endSeq {
+				resp = append(resp, val)
+			}
+		}
+	}
+	
+	return resp
 }
 
 // func (s *StreamDataStoreImpl) GetKeys() []string {
@@ -100,7 +133,7 @@ func (s *StreamDataStoreImpl) GetEntry(streamKey string, entryID string) (Stream
 // 	return keys
 // }
 
-func getUpdatedEntryID(prevEntryID, entryID string) (string, error) {
+func getUpdatedEntryID(prevEntryID string, entryID string) (string, error) {
 	err := validateEntryID(prevEntryID, entryID)
 	if err != nil {
 		return "", err
@@ -141,6 +174,14 @@ func parseEntryID(entryID string) (int, int) {
 	}
 
 	entryIdComposition := strings.Split(entryID, "-")
+	if len(entryIdComposition) == 1 {
+		if timestamp, _ := strconv.Atoi(entryIdComposition[0]); timestamp == 0 {
+			return 0, 1
+		} else {
+			return timestamp, 0
+		}
+	}
+
 	timestamp, _ := strconv.Atoi(entryIdComposition[0])
 	if entryIdComposition[1] == "*" {
 		return timestamp, math.MaxInt

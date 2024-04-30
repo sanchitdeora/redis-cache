@@ -14,7 +14,7 @@ type Values struct {
 
 type StreamValues struct {
 	ID    string
-	Entry StreamEntry
+	Entry []StreamEntry
 }
 
 type StreamEntry struct {
