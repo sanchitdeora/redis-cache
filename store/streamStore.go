@@ -92,6 +92,14 @@ func (s *StreamDataStoreImpl) GetEntry(streamKey string, entryID string) []Strea
 }
 
 func (s *StreamDataStoreImpl) GetEntryRange(streamKey string, startEntryID string, endEntryID string) ([]StreamValues) {
+	if startEntryID == "-" {
+		startEntryID = "0-1"
+	}
+
+	if endEntryID == "+" {
+		endEntryID = fmt.Sprintf("%v-%v", time.Now().UnixMilli(), time.Now().UnixMilli())
+	}
+
 	err := validateEntryID(startEntryID, endEntryID)
 	if err != nil {
 		return nil

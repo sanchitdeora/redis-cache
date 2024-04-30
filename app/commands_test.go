@@ -237,6 +237,17 @@ func TestParseCommands_XRange(t *testing.T) {
 		val, err := handler.ParseCommands(string(buf))
 		assert.Nil(t, err)
 		assert.Equal(t, []string{"*2\r\n*2\r\n$3\r\n1-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n1-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
+
+		buf = []byte("*4\r\n$6\r\nxrange\r\n$10\r\nstrawberry\r\n$1\r\n-\r\n$3\r\n1-2\r\n")	
+		val, err = handler.ParseCommands(string(buf))
+		assert.Nil(t, err)
+		assert.Equal(t, []string{"*2\r\n*2\r\n$3\r\n1-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n1-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
+
+		buf = []byte("*4\r\n$6\r\nxrange\r\n$10\r\nstrawberry\r\n$1\r\n1\r\n$1\r\n+\r\n")	
+		val, err = handler.ParseCommands(string(buf))
+		assert.Nil(t, err)
+		assert.Equal(t, []string{"*3\r\n*2\r\n$3\r\n1-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n1-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n1-3\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
+
 	}
 
 }
