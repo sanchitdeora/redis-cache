@@ -170,18 +170,54 @@ func TestParseCommands_Type(t *testing.T) {
 func TestParseCommands_XAdd(t *testing.T) {
 	handler := createCommandsHandler(RoleMaster)
 
-	buf := []byte("*5\r\n$4\r\nxadd\r\n$6\r\norange\r\n$3\r\n0-1\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+	{
+		buf := []byte("*5\r\n$4\r\nxadd\r\n$6\r\norange\r\n$3\r\n0-1\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
 
-	_, exists := handler.Store.StreamStore.DataStore["orange"]
-	assert.False(t, exists)
+		_, exists := handler.Store.StreamStore.DataStore["orange"]
+		assert.False(t, exists)
 
-	handler.ParseCommands(string(buf))
+		val, err := handler.ParseCommands(string(buf))
+		assert.Nil(t, err)
+		assert.Equal(t, []string{"$3\r\n0-1\r\n"}, val)
 
-	val, exists := handler.Store.StreamStore.DataStore["orange"]
-	assert.True(t, exists)
-	assert.Equal(t, "0-1", val[0].ID)
-	assert.Equal(t, "foo", len(val[0].Entry.Key))
-	assert.Equal(t, "bar", len(val[0].Entry.Value))
+		streamVal, exists := handler.Store.StreamStore.DataStore["orange"]
+		assert.True(t, exists)
+		assert.Equal(t, "0-1", streamVal[0].ID)
+		assert.Equal(t, "foo", streamVal[0].Entry.Key)
+		assert.Equal(t, "bar", streamVal[0].Entry.Value)
+	}
+
+	{
+		buf := []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n0-*\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+
+		_, exists := handler.Store.StreamStore.DataStore["strawberry"]
+		assert.False(t, exists)
+
+		val, err := handler.ParseCommands(string(buf))
+		assert.Nil(t, err)
+		assert.Equal(t, []string{"$3\r\n0-1\r\n"}, val)
+
+		streamVal, exists := handler.Store.StreamStore.DataStore["strawberry"]
+		assert.True(t, exists)
+		assert.Equal(t, "0-1", streamVal[0].ID)
+		assert.Equal(t, "foo", streamVal[0].Entry.Key)
+		assert.Equal(t, "bar", streamVal[0].Entry.Value)
+	}
+
+	{
+		buf := []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n1-*\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+
+		val, err := handler.ParseCommands(string(buf))
+		assert.Nil(t, err)
+		assert.Equal(t, []string{"$3\r\n1-0\r\n"}, val)
+
+		streamVal, exists := handler.Store.StreamStore.DataStore["strawberry"]
+		assert.True(t, exists)
+		assert.Equal(t, "1-0", streamVal[1].ID)
+		assert.Equal(t, "foo", streamVal[1].Entry.Key)
+		assert.Equal(t, "bar", streamVal[1].Entry.Value)
+	}
+
 }
 
 func TestIsWriteCommand(t *testing.T) {

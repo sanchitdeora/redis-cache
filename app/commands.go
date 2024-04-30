@@ -468,9 +468,9 @@ func (ch *Commands) XAddHandler(requestLines []string) ([]string, error) {
 	}
 
 	streamKey := requestLines[4]
-	entryKey := requestLines[6]
+	entryID := requestLines[6]
 
-	if entryKey == "0-0" {
+	if entryID == "0-0" {
 		return []string{ResponseBuilder(ErrorsRespType, "The ID specified in XADD must be greater than 0-0")}, nil
 	}
 
@@ -485,17 +485,20 @@ func (ch *Commands) XAddHandler(requestLines []string) ([]string, error) {
 			Value: value,
 		}
 		// entries = append(entries, entryValue)
-		err := ch.Store.StreamStore.Set(streamKey, entryKey, entryValue)
+		updatedEntryId, err := ch.Store.StreamStore.SetEntry(streamKey, entryID, entryValue)
 		if errors.Is(err, store.ErrInvalidEntryID) {
 			return []string{ResponseBuilder(ErrorsRespType, "The ID specified in XADD is equal or smaller than the target stream top item")}, nil
 		} else if err != nil {
 			return []string{}, err
 		}
 
+		if updatedEntryId != "" {
+			entryID = updatedEntryId
+		}
 		i += 4
-	}	
+	}
 
-	return []string{ResponseBuilder(BulkStringsRespType, entryKey)}, nil
+	return []string{ResponseBuilder(BulkStringsRespType, entryID)}, nil
 
 
 }
