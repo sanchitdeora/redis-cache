@@ -269,6 +269,31 @@ func TestParseCommands_XRead(t *testing.T) {
 	}
 }
 
+func TestParseCommands_XRead_WithBlock(t *testing.T) {
+	handler := createCommandsHandler(RoleMaster)
+
+	{
+		buf := []byte("*5\r\n$4\r\nxadd\r\n$6\r\norange\r\n$3\r\n0-1\r\n$11\r\ntemperature\r\n$2\r\n90\r\n")	
+		handler.ParseCommands(string(buf))
+
+		go func ()  {
+			time.Sleep(500 * time.Millisecond)
+			buf := []byte("*5\r\n$4\r\nxadd\r\n$6\r\norange\r\n$3\r\n0-2\r\n$11\r\ntemperature\r\n$2\r\n90\r\n")	
+			handler.ParseCommands(string(buf))
+		}()
+
+		buf = []byte("*6\r\n$5\r\nxread\r\n$5\r\nblock\r\n$4\r\n1000\r\n$7\r\nstreams\r\n$6\r\norange\r\n$3\r\n0-1\r\n")	
+		val, err := handler.ParseCommands(string(buf))
+		assert.Nil(t, err)
+		assert.Equal(t, []string{"*1\r\n*2\r\n$6\r\norange\r\n*1\r\n*2\r\n$3\r\n0-2\r\n*2\r\n$11\r\ntemperature\r\n$2\r\n90\r\n"}, val)
+
+		buf = []byte("*6\r\n$5\r\nxread\r\n$5\r\nblock\r\n$4\r\n1000\r\n$7\r\nstreams\r\n$6\r\norange\r\n$3\r\n0-2\r\n")	
+		val, err = handler.ParseCommands(string(buf))
+		assert.Nil(t, err)
+		assert.Equal(t, []string{"-1\r\n"}, val)
+	}
+}
+
 func TestIsWriteCommand(t *testing.T) {
 	isWrite := IsWriteCommand("*1\r\n$4\r\nping\r\n")
 	assert.False(t, isWrite)
@@ -290,6 +315,10 @@ func TestIsPsyncCommand(t *testing.T) {
 	isWrite = ContainsPsyncCommand("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
 	assert.True(t, isWrite)
 }
+
+
+
+
 
 func TestReadFromRDBFile(t *testing.T) {
 	{

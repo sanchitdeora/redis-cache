@@ -46,6 +46,7 @@ const (
 	XADD Command = "XADD"
 	XRANGE Command = "XRANGE"
 	XREAD Command = "XREAD"
+	BLOCK Command = "BLOCK"
 
 	// info response constants
 	InfoRole = "role"
@@ -545,6 +546,14 @@ func (ch *Commands) XReadHandler(requestLines []string) ([]string, error) {
 	}
 
 	indexJ := 5
+	if Command(strings.ToUpper(requestLines[4])) == BLOCK {
+		indexJ += 4
+		blockTimeout, err := strconv.Atoi(requestLines[6])
+		if err == nil {
+			time.Sleep(time.Duration(blockTimeout) * time.Millisecond)
+		}
+	}
+
 	xreadStreamCount := len(requestLines[indexJ:]) / 4
 
 	var streamKeys, entryIDs []string
@@ -558,20 +567,20 @@ func (ch *Commands) XReadHandler(requestLines []string) ([]string, error) {
 		indexJ += 2
 	}
 
-
 	readStreams := make(map[string][]store.StreamValues)
 	for i := 0; i < xreadStreamCount; i++ {
 		readStreams[streamKeys[i]] = ch.Store.StreamStore.ReadEntry(streamKeys[i], entryIDs[i])
 	}
 
-	if len(readStreams) == 0 {
-		return []string{}, fmt.Errorf("no value found to XREAD")
+	if len(readStreams) == 0 || (len(readStreams) == 1 && len(readStreams[streamKeys[0]]) == 0){
+		return NullResponse(), nil
 	}
 
 	var resp string
 	resp = fmt.Sprintf("*%v\r\n", len(readStreams))
 
 	for streamName, streamValues := range readStreams {
+
 		resp += "*2\r\n"
 		resp += ResponseBuilder(BulkStringsRespType, streamName)
 
