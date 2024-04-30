@@ -18,6 +18,9 @@ var numReplicasAck int
 var numReplicasWait int
 var replicasWaitChan = make(chan bool, 1)
 
+var xreadBlockChan = make(chan string)
+
+
 const (
 	// Basic Redis
 	PING Command = "PING"
@@ -549,21 +552,64 @@ func (ch *Commands) XReadHandler(requestLines []string) ([]string, error) {
 	if Command(strings.ToUpper(requestLines[4])) == BLOCK {
 		indexJ += 4
 		blockTimeout, err := strconv.Atoi(requestLines[6])
-		if err == nil {
-			time.Sleep(time.Duration(blockTimeout) * time.Millisecond)
+		if err != nil {
+			return ch.internalXReadHandler(requestLines[indexJ:])
+		}
+		go ch.XReadWithBlock(blockTimeout, requestLines[indexJ:])
+
+		for {
+			select {
+				case resp := <- xreadBlockChan:
+					return []string{resp}, nil
+
+				case <-time.After(time.Duration(70) * time.Second):
+					return NullResponse(), nil
+			}
+		}
+
+	} else {
+		return ch.internalXReadHandler(requestLines[indexJ:])
+	}
+
+	// return []string{"should not be here"}, nil
+}
+
+func (ch *Commands) XReadWithBlock(timeout int, request []string) {
+	if timeout > 0 {
+		time.Sleep(time.Duration(timeout) * time.Millisecond)
+
+		response, err := ch.internalXReadHandler(request)
+		if err != nil {
+			xreadBlockChan <- NullResponse()[0]
+		} else {
+			xreadBlockChan <- response[0]
+		}
+	} else {
+		for {
+			result, _ := ch.internalXReadHandler(request)
+			if result != nil && result[0] != NullResponse()[0] {
+				xreadBlockChan <- result[0]
+				break
+			}
+			time.Sleep(time.Duration(10) * time.Millisecond)
 		}
 	}
 
-	xreadStreamCount := len(requestLines[indexJ:]) / 4
+}
+
+func (ch *Commands) internalXReadHandler(request []string) ([]string, error) {
+
+	indexJ := 0
+	xreadStreamCount := len(request[indexJ:]) / 4
 
 	var streamKeys, entryIDs []string
 	for i := 0; i < xreadStreamCount; i++ {
-		streamKeys = append(streamKeys, requestLines[indexJ + 1])
+		streamKeys = append(streamKeys, request[indexJ + 1])
 		indexJ += 2
 	}
 
 	for i := 0; i < xreadStreamCount; i++ {
-		entryIDs = append(entryIDs, requestLines[indexJ + 1])
+		entryIDs = append(entryIDs, request[indexJ + 1])
 		indexJ += 2
 	}
 
