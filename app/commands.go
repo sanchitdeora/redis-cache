@@ -543,7 +543,53 @@ func (ch *Commands) XReadHandler(requestLines []string) ([]string, error) {
 	if len(requestLines) < 9 {
 		return nil, fmt.Errorf("invalid command received. XRANGE should have more arguments: %s", requestLines)
 	}
-	return []string{}, nil
+
+	indexJ := 5
+	xreadStreamCount := len(requestLines[indexJ:]) / 4
+
+	var streamKeys, entryIDs []string
+	for i := 0; i < xreadStreamCount; i++ {
+		streamKeys = append(streamKeys, requestLines[indexJ + 1])
+		indexJ += 2
+	}
+
+	for i := 0; i < xreadStreamCount; i++ {
+		entryIDs = append(entryIDs, requestLines[indexJ + 1])
+		indexJ += 2
+	}
+
+
+	readStreams := make(map[string][]store.StreamValues)
+	for i := 0; i < xreadStreamCount; i++ {
+		readStreams[streamKeys[i]] = ch.Store.StreamStore.ReadEntry(streamKeys[i], entryIDs[i])
+	}
+
+	if len(readStreams) == 0 {
+		return []string{}, fmt.Errorf("no value found to XREAD")
+	}
+
+	var resp string
+	resp = fmt.Sprintf("*%v\r\n", len(readStreams))
+
+	for streamName, streamValues := range readStreams {
+		resp += "*2\r\n"
+		resp += ResponseBuilder(BulkStringsRespType, streamName)
+
+		resp += fmt.Sprintf("*%v\r\n", len(streamValues))
+		for _, val := range streamValues {
+			resp += "*2\r\n"
+			resp += ResponseBuilder(BulkStringsRespType, val.ID)
+	
+			innerResp := make([]string, 0)
+			for _, entry := range val.Entry {
+				innerResp = append(innerResp, entry.Key, entry.Value)
+			}
+	
+			resp += ResponseBuilder(ArraysRespType, innerResp...)
+		}
+	}
+
+	return []string{resp}, nil
 }
 
 func (ch *Commands) RdbFileHandler() ([]string, error) {

@@ -73,22 +73,20 @@ func (s *StreamDataStoreImpl) GetStream(streamKey string) ([]StreamValues, error
 	return val, nil
 }
 
-func (s *StreamDataStoreImpl) GetEntry(streamKey string, entryID string) []StreamEntry {
+func (s *StreamDataStoreImpl) GetEntry(streamKey string, entryID string) StreamValues {
 	val, exists := s.DataStore[streamKey]; if !exists {
-		return nil
+		return StreamValues{}
 	}
 
 	if len(val) > 0 {
 		for _, entry := range val {
 			if entry.ID == entryID {
-				return entry.Entry
+				return entry
 			}
 		}
-	} else {
-		return nil
 	}
-
-	return nil
+	
+	return StreamValues{}
 }
 
 func (s *StreamDataStoreImpl) GetEntryRange(streamKey string, startEntryID string, endEntryID string) ([]StreamValues) {
@@ -129,6 +127,41 @@ func (s *StreamDataStoreImpl) GetEntryRange(streamKey string, startEntryID strin
 	}
 	
 	return resp
+}
+
+func (s *StreamDataStoreImpl) ReadEntry(streamKey string, startEntryID string) []StreamValues {
+	startTs, startSeq := parseEntryID(startEntryID)
+	endEntryID := fmt.Sprintf("%v-%v", startTs, time.Now().UnixMilli())
+
+	err := validateEntryID(startEntryID, endEntryID)
+	if err != nil {
+		return nil
+	}
+
+	streamValues, exists := s.DataStore[streamKey]; if !exists {
+		return nil
+	}
+
+	resp := make([]StreamValues, 0)
+
+	endTs, endSeq := parseEntryID(endEntryID)
+
+	for _, val := range streamValues {
+		currTs, currSeq := parseEntryID(val.ID)
+
+		if (startTs <= currTs && currTs <= endTs) {
+			if startTs == endTs && startSeq < currSeq && currSeq < endSeq {
+				resp = append(resp, val)
+			} else if startTs != endTs && startTs == currTs && startSeq < currSeq {
+				resp = append(resp, val)
+			} else if startTs != endTs && currTs == endTs && currSeq < endSeq {
+				resp = append(resp, val)
+			}
+		}
+	}
+
+	return resp
+
 }
 
 // func (s *StreamDataStoreImpl) GetKeys() []string {
