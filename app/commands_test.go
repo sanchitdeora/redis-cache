@@ -224,29 +224,32 @@ func TestParseCommands_XRange(t *testing.T) {
 	handler := createCommandsHandler(RoleMaster)
 
 	{
-		buf := []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n1-1\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+		buf := []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n0-1\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
 		handler.ParseCommands(string(buf))
 
-		buf = []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n1-2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+		buf = []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n0-2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
 		handler.ParseCommands(string(buf))
 
-		buf = []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n1-3\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+		buf = []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n0-3\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
 		handler.ParseCommands(string(buf))
-		
-		buf = []byte("*4\r\n$6\r\nxrange\r\n$10\r\nstrawberry\r\n$1\r\n1\r\n$3\r\n1-2\r\n")	
+
+		buf = []byte("*5\r\n$4\r\nxadd\r\n$10\r\nstrawberry\r\n$3\r\n0-4\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")	
+		handler.ParseCommands(string(buf))
+	
+		buf = []byte("*4\r\n$6\r\nxrange\r\n$10\r\nstrawberry\r\n$1\r\n0\r\n$3\r\n0-2\r\n")	
 		val, err := handler.ParseCommands(string(buf))
 		assert.Nil(t, err)
-		assert.Equal(t, []string{"*2\r\n*2\r\n$3\r\n1-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n1-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
+		assert.Equal(t, []string{"*2\r\n*2\r\n$3\r\n0-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n0-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
 
-		buf = []byte("*4\r\n$6\r\nxrange\r\n$10\r\nstrawberry\r\n$1\r\n-\r\n$3\r\n1-2\r\n")	
+		buf = []byte("*4\r\n$6\r\nxrange\r\n$10\r\nstrawberry\r\n$1\r\n-\r\n$3\r\n0-2\r\n")	
 		val, err = handler.ParseCommands(string(buf))
 		assert.Nil(t, err)
-		assert.Equal(t, []string{"*2\r\n*2\r\n$3\r\n1-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n1-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
+		assert.Equal(t, []string{"*2\r\n*2\r\n$3\r\n0-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n0-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
 
-		buf = []byte("*4\r\n$6\r\nxrange\r\n$10\r\nstrawberry\r\n$1\r\n1\r\n$1\r\n+\r\n")	
+		buf = []byte("*4\r\n$6\r\nxrange\r\n$10\r\nstrawberry\r\n$1\r\n0\r\n$1\r\n+\r\n")	
 		val, err = handler.ParseCommands(string(buf))
 		assert.Nil(t, err)
-		assert.Equal(t, []string{"*3\r\n*2\r\n$3\r\n1-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n1-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n1-3\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
+		assert.Equal(t, []string{"*4\r\n*2\r\n$3\r\n0-1\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n0-2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n0-3\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\n0-4\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"}, val)
 
 	}
 

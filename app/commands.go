@@ -45,6 +45,7 @@ const (
 	TYPE Command = "TYPE"
 	XADD Command = "XADD"
 	XRANGE Command = "XRANGE"
+	XREAD Command = "XREAD"
 
 	// info response constants
 	InfoRole = "role"
@@ -186,6 +187,9 @@ func (ch *Commands) CommandsHandler(requestLines []string) (resp []string, err e
 
 		case XRANGE:
 			resp, err = ch.XRangeHandler(requestLines)
+
+		case XREAD:
+			resp, err = ch.XReadHandler(requestLines)
 
 
 		default:
@@ -533,6 +537,13 @@ func (ch *Commands) XRangeHandler(requestLines []string) ([]string, error) {
 	}
 
 	return []string{resp}, nil
+}
+
+func (ch *Commands) XReadHandler(requestLines []string) ([]string, error) {
+	if len(requestLines) < 9 {
+		return nil, fmt.Errorf("invalid command received. XRANGE should have more arguments: %s", requestLines)
+	}
+	return []string{}, nil
 }
 
 func (ch *Commands) RdbFileHandler() ([]string, error) {

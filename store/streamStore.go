@@ -120,7 +120,7 @@ func (s *StreamDataStoreImpl) GetEntryRange(streamKey string, startEntryID strin
 		if (startTs <= currTs && currTs <= endTs) {
 			if startTs == endTs && startSeq <= currSeq && currSeq <= endSeq {
 				resp = append(resp, val)
-			} else if startTs != endTs && startTs == currTs && startSeq <= currTs {
+			} else if startTs != endTs && startTs == currTs && startSeq <= currSeq {
 				resp = append(resp, val)
 			} else if startTs != endTs && currTs == endTs && currSeq <= endSeq {
 				resp = append(resp, val)
